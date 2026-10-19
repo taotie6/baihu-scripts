@@ -16,8 +16,10 @@
 
 | 应用 | 说明 | Manifest |
 | --- | --- | --- |
+| [aliyundrive-checkin](apps/aliyundrive-checkin/) | 阿里云盘每日签到与奖励领取 | [app.yaml](apps/aliyundrive-checkin/app.yaml) |
 | [iios-checkin](apps/iios-checkin/) | iios.fun 每日签到，支持单账号与多账号 | [app.yaml](apps/iios-checkin/app.yaml) |
 | [qoder-cn-checkin](apps/qoder-cn-checkin/) | Qoder CN 用量汇总与活动权益领取 | [app.yaml](apps/qoder-cn-checkin/app.yaml) |
+| [qoder-global-checkin](apps/qoder-global-checkin/) | Qoder 国际版用量汇总与活动权益领取 | [app.yaml](apps/qoder-global-checkin/app.yaml) |
 | [trae-cn-checkin](apps/trae-cn-checkin/) | Trae CN / TRAE SOLO CN 每日签到 | [app.yaml](apps/trae-cn-checkin/app.yaml) |
 | [workbuddy-checkin](apps/workbuddy-checkin/) | WorkBuddy 每日积分领取，支持加密登录态与多账号 | [app.yaml](apps/workbuddy-checkin/app.yaml) |
 
@@ -27,10 +29,22 @@ iios.fun 远程 Manifest：
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/app.yaml
 ```
 
+阿里云盘远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/aliyundrive-checkin/app.yaml
+```
+
 Qoder CN 远程 Manifest：
 
 ```text
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qoder-cn-checkin/app.yaml
+```
+
+Qoder 国际版远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qoder-global-checkin/app.yaml
 ```
 
 WorkBuddy 远程 Manifest：
@@ -51,10 +65,16 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/trae-cn-checki
 .
 ├── .github/workflows/build-apps.yml
 ├── apps/
+│   ├── aliyundrive-checkin/
+│   │   ├── app.yaml
+│   │   └── main/
 │   ├── iios-checkin/
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── qoder-cn-checkin/
+│   │   ├── app.yaml
+│   │   └── main/
+│   ├── qoder-global-checkin/
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── trae-cn-checkin/

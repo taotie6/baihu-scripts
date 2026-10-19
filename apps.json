@@ -4,8 +4,97 @@
   "generated_at": "2026-10-18T16:00:00Z",
   "generated_at_utc8": "2026-10-19 00:00:00",
   "build_time": "2026-10-19 00:00:00",
-  "total_apps": 4,
+  "total_apps": 6,
   "apps": [
+    {
+      "spec_version": "v1",
+      "id": "aliyundrive-checkin",
+      "name": "阿里云盘每日签到",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "福利签到",
+      "last_commit": "2026-10-19T00:00:00+08:00",
+      "description": "阿里云盘每日签到与奖励领取，支持白虎机密变量、单账号和多账号。",
+      "homepage": "https://www.aliyundrive.com",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": false,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 40 8 * * *",
+        "random_range": 300,
+        "timeout": 5,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "AliyunDriveCheckin"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "daily-checkin",
+          "name": "阿里云盘每日签到",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python checkin.py",
+          "default_cron": "0 40 8 * * *",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "ALIYUNDRIVE_REFRESH_TOKEN",
+          "label": "单账号 Refresh Token",
+          "type": "secret",
+          "required": false,
+          "description": "阿里云盘 refresh_token；单账号与多账号配置二选一。"
+        },
+        {
+          "key": "ALIYUNDRIVE_ACCOUNTS",
+          "label": "多账号 JSON",
+          "type": "secret",
+          "required": false,
+          "description": "JSON 数组；每项支持 label 及 refresh_token/refreshToken。配置后优先于单账号。",
+          "placeholder": "[{\"label\":\"账号1\",\"refresh_token\":\"...\"}]"
+        },
+        {
+          "key": "ALIYUNDRIVE_ACCOUNTS_FILE",
+          "label": "账号文件路径",
+          "type": "string",
+          "required": false,
+          "description": "可选；已挂载账号 JSON 路径，兼容含 ALIYUN 数组的原 config.json。"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "standard",
+          "name": "每日签到",
+          "description": "每天 08:40 执行签到并领取奖励，随机延迟最多 5 分钟。",
+          "default": true,
+          "task_presets": {
+            "daily-checkin": {
+              "enabled": true,
+              "cron": "0 40 8 * * *"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 1,
+      "app_dir": "aliyundrive-checkin",
+      "manifest_path": "apps/aliyundrive-checkin/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"aliyundrive-checkin\"\nname: \"阿里云盘每日签到\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-19T00:00:00+08:00\"\ntemplate:\n  - tag: \"AliyunDriveCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"阿里云盘每日签到与奖励领取，支持白虎机密变量、单账号和多账号。\"\nhomepage: \"https://www.aliyundrive.com\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 40 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/aliyundrive-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/aliyundrive-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/aliyundrive-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"ALIYUNDRIVE_REFRESH_TOKEN\"\n    label: \"单账号 Refresh Token\"\n    type: \"secret\"\n    required: false\n    description: \"阿里云盘 refresh_token；单账号与多账号配置二选一。\"\n  - key: \"ALIYUNDRIVE_ACCOUNTS\"\n    label: \"多账号 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"JSON 数组；每项支持 label 及 refresh_token/refreshToken。配置后优先于单账号。\"\n    placeholder: '[{\"label\":\"账号1\",\"refresh_token\":\"...\"}]'\n  - key: \"ALIYUNDRIVE_ACCOUNTS_FILE\"\n    label: \"账号文件路径\"\n    type: \"string\"\n    required: false\n    description: \"可选；已挂载账号 JSON 路径，兼容含 ALIYUN 数组的原 config.json。\"\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/aliyundrive-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"阿里云盘每日签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py\"\n      default_cron: \"0 40 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日签到\"\n    description: \"每天 08:40 执行签到并领取奖励，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 40 8 * * *\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/aliyundrive-checkin/app.yaml",
+      "updated_at": "2026-10-19 00:00:00"
+    },
     {
       "spec_version": "v1",
       "id": "iios-checkin",
@@ -211,6 +300,124 @@
       "manifest_path": "apps/qoder-cn-checkin/app.yaml",
       "manifest_raw": "spec_version: \"v1\"\nid: \"qoder-cn-checkin\"\nname: \"Qoder CN 用量与签到\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-19T00:00:00+08:00\"\ntemplate:\n  - tag: \"QoderCnCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"Qoder CN 用量、额度与活跃数据汇总，并自动领取可领取的活动权益。\"\nhomepage: \"https://qoder.com.cn\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 30 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c\n    \"import requests; from cryptography.hazmat.primitives.ciphers.aead import AESGCM\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qoder-cn-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qoder-cn-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qoder-cn-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"QODER_CN_AUTHS\"\n    label: \"Qoder 登录凭证 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"解密后的 auth JSON 对象或对象数组；也支持带 label/auth 的多账号包装格式。\"\n    placeholder: '{\"token\":\"...\",\"expiresAt\":\"...\",\"user\":{\"name\":\"...\"}}'\n  - key: \"QODER_CN_AUTH_FILE\"\n    label: \"凭证文件路径\"\n    type: \"string\"\n    required: false\n    description: \"可选；白虎主机中已挂载的 auths.json 路径。机密变量优先于此项。\"\n  - key: \"QODER_CN_PROFILE\"\n    label: \"Qoder 客户端目录\"\n    type: \"string\"\n    required: false\n    description: \"仅限原 Windows 用户环境；包含 Local State 和 auth.v1.dat 的目录。\"\n  - key: \"QODER_CN_CLIENT_TYPE\"\n    label: \"Cosy ClientType\"\n    type: \"string\"\n    required: false\n    default: \"10\"\n  - key: \"QODER_CN_VERSION\"\n    label: \"Qoder 客户端版本\"\n    type: \"string\"\n    required: false\n    default: \"0.3.4\"\n  - key: \"QODER_CN_HEATMAP_DAYS\"\n    label: \"热力图天数\"\n    type: \"string\"\n    required: false\n    default: \"30\"\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qoder-cn-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-usage-and-checkin\"\n      name: \"Qoder CN 用量与签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py usage\"\n      default_cron: \"0 30 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日汇总与签到\"\n    description: \"每天 08:30 汇总用量并领取权益，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-usage-and-checkin:\n        enabled: true\n        cron: \"0 30 8 * * *\"\n",
       "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qoder-cn-checkin/app.yaml",
+      "updated_at": "2026-10-19 00:00:00"
+    },
+    {
+      "spec_version": "v1",
+      "id": "qoder-global-checkin",
+      "name": "Qoder 国际版用量与签到",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "福利签到",
+      "last_commit": "2026-10-19T00:00:00+08:00",
+      "description": "Qoder 国际版用量、额度与活跃数据汇总，支持 PAT 换取 job token 并自动领取活动权益。",
+      "homepage": "https://qoder.com",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": false,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 35 8 * * *",
+        "random_range": 300,
+        "timeout": 5,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "QoderGlobalCheckin"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "daily-usage-and-checkin",
+          "name": "Qoder 国际版用量与签到",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python checkin.py usage",
+          "default_cron": "0 35 8 * * *",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "QODER_GLOBAL_PAT",
+          "label": "Qoder Personal Access Token",
+          "type": "secret",
+          "required": false,
+          "description": "推荐；在 qoder.com 创建的 pt-...，脚本每次运行自动交换为短时 job token。",
+          "placeholder": "pt-..."
+        },
+        {
+          "key": "QODER_GLOBAL_AUTHS",
+          "label": "Qoder 多账号凭证 JSON",
+          "type": "secret",
+          "required": false,
+          "description": "PAT 或 job token 凭证对象/数组；配置后优先于单账号 PAT。",
+          "placeholder": "[{\"label\":\"账号1\",\"pat\":\"pt-...\"}]"
+        },
+        {
+          "key": "QODER_GLOBAL_AUTH_FILE",
+          "label": "凭证文件路径",
+          "type": "string",
+          "required": false,
+          "description": "可选；白虎主机中已挂载的 auths.json 路径。"
+        },
+        {
+          "key": "QODER_GLOBAL_PROFILE",
+          "label": "Qoder 客户端目录",
+          "type": "string",
+          "required": false,
+          "description": "仅限原 Windows 用户环境；包含 Local State 和 auth.v1.dat 的目录。"
+        },
+        {
+          "key": "QODER_GLOBAL_CLIENT_TYPE",
+          "label": "Cosy ClientType",
+          "type": "string",
+          "required": false,
+          "default": "10"
+        },
+        {
+          "key": "QODER_GLOBAL_VERSION",
+          "label": "Qoder 客户端版本",
+          "type": "string",
+          "required": false,
+          "default": "0.4.2"
+        },
+        {
+          "key": "QODER_GLOBAL_HEATMAP_DAYS",
+          "label": "热力图天数",
+          "type": "string",
+          "required": false,
+          "default": "30"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "standard",
+          "name": "每日汇总与签到",
+          "description": "每天 08:35 汇总用量并领取权益，随机延迟最多 5 分钟。",
+          "default": true,
+          "task_presets": {
+            "daily-usage-and-checkin": {
+              "enabled": true,
+              "cron": "0 35 8 * * *"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 1,
+      "app_dir": "qoder-global-checkin",
+      "manifest_path": "apps/qoder-global-checkin/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"qoder-global-checkin\"\nname: \"Qoder 国际版用量与签到\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-19T00:00:00+08:00\"\ntemplate:\n  - tag: \"QoderGlobalCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"Qoder 国际版用量、额度与活跃数据汇总，支持 PAT 换取 job token 并自动领取活动权益。\"\nhomepage: \"https://qoder.com\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 35 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c\n    \"import requests; from cryptography.hazmat.primitives.ciphers.aead import AESGCM\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qoder-global-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qoder-global-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qoder-global-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"QODER_GLOBAL_PAT\"\n    label: \"Qoder Personal Access Token\"\n    type: \"secret\"\n    required: false\n    description: \"推荐；在 qoder.com 创建的 pt-...，脚本每次运行自动交换为短时 job token。\"\n    placeholder: \"pt-...\"\n  - key: \"QODER_GLOBAL_AUTHS\"\n    label: \"Qoder 多账号凭证 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"PAT 或 job token 凭证对象/数组；配置后优先于单账号 PAT。\"\n    placeholder: '[{\"label\":\"账号1\",\"pat\":\"pt-...\"}]'\n  - key: \"QODER_GLOBAL_AUTH_FILE\"\n    label: \"凭证文件路径\"\n    type: \"string\"\n    required: false\n    description: \"可选；白虎主机中已挂载的 auths.json 路径。\"\n  - key: \"QODER_GLOBAL_PROFILE\"\n    label: \"Qoder 客户端目录\"\n    type: \"string\"\n    required: false\n    description: \"仅限原 Windows 用户环境；包含 Local State 和 auth.v1.dat 的目录。\"\n  - key: \"QODER_GLOBAL_CLIENT_TYPE\"\n    label: \"Cosy ClientType\"\n    type: \"string\"\n    required: false\n    default: \"10\"\n  - key: \"QODER_GLOBAL_VERSION\"\n    label: \"Qoder 客户端版本\"\n    type: \"string\"\n    required: false\n    default: \"0.4.2\"\n  - key: \"QODER_GLOBAL_HEATMAP_DAYS\"\n    label: \"热力图天数\"\n    type: \"string\"\n    required: false\n    default: \"30\"\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qoder-global-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-usage-and-checkin\"\n      name: \"Qoder 国际版用量与签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py usage\"\n      default_cron: \"0 35 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日汇总与签到\"\n    description: \"每天 08:35 汇总用量并领取权益，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-usage-and-checkin:\n        enabled: true\n        cron: \"0 35 8 * * *\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qoder-global-checkin/app.yaml",
       "updated_at": "2026-10-19 00:00:00"
     },
     {

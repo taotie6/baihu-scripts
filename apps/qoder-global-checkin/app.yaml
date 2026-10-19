@@ -1,0 +1,102 @@
+spec_version: "v1"
+id: "qoder-global-checkin"
+name: "Qoder 国际版用量与签到"
+version: "1.0.0"
+author: "taotie6"
+category: "福利签到"
+last_commit: "2026-10-19T00:00:00+08:00"
+template:
+  - tag: "QoderGlobalCheckin"
+  - mise_languages: "python@3.12.11"
+description: "Qoder 国际版用量、额度与活跃数据汇总，支持 PAT 换取 job token 并自动领取活动权益。"
+homepage: "https://qoder.com"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: false
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 35 8 * * *"
+  random_range: 300
+  timeout: 5
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c
+    "import requests; from cryptography.hazmat.primitives.ciphers.aead import AESGCM"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/qoder-global-checkin/main/checkin.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/qoder-global-checkin/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/qoder-global-checkin/main/checkin.py"
+env_schema:
+  - key: "QODER_GLOBAL_PAT"
+    label: "Qoder Personal Access Token"
+    type: "secret"
+    required: false
+    description: "推荐；在 qoder.com 创建的 pt-...，脚本每次运行自动交换为短时 job token。"
+    placeholder: "pt-..."
+  - key: "QODER_GLOBAL_AUTHS"
+    label: "Qoder 多账号凭证 JSON"
+    type: "secret"
+    required: false
+    description: "PAT 或 job token 凭证对象/数组；配置后优先于单账号 PAT。"
+    placeholder: '[{"label":"账号1","pat":"pt-..."}]'
+  - key: "QODER_GLOBAL_AUTH_FILE"
+    label: "凭证文件路径"
+    type: "string"
+    required: false
+    description: "可选；白虎主机中已挂载的 auths.json 路径。"
+  - key: "QODER_GLOBAL_PROFILE"
+    label: "Qoder 客户端目录"
+    type: "string"
+    required: false
+    description: "仅限原 Windows 用户环境；包含 Local State 和 auth.v1.dat 的目录。"
+  - key: "QODER_GLOBAL_CLIENT_TYPE"
+    label: "Cosy ClientType"
+    type: "string"
+    required: false
+    default: "10"
+  - key: "QODER_GLOBAL_VERSION"
+    label: "Qoder 客户端版本"
+    type: "string"
+    required: false
+    default: "0.4.2"
+  - key: "QODER_GLOBAL_HEATMAP_DAYS"
+    label: "热力图天数"
+    type: "string"
+    required: false
+    default: "30"
+sync_rules:
+  defaults:
+    timeout: 5
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/qoder-global-checkin/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "daily-usage-and-checkin"
+      name: "Qoder 国际版用量与签到"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python checkin.py usage"
+      default_cron: "0 35 8 * * *"
+      enabled: true
+scenarios:
+  - id: "standard"
+    name: "每日汇总与签到"
+    description: "每天 08:35 汇总用量并领取权益，随机延迟最多 5 分钟。"
+    default: true
+    task_presets:
+      daily-usage-and-checkin:
+        enabled: true
+        cron: "0 35 8 * * *"

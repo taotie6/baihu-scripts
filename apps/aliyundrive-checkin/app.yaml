@@ -1,0 +1,80 @@
+spec_version: "v1"
+id: "aliyundrive-checkin"
+name: "阿里云盘每日签到"
+version: "1.0.0"
+author: "taotie6"
+category: "福利签到"
+last_commit: "2026-10-19T00:00:00+08:00"
+template:
+  - tag: "AliyunDriveCheckin"
+  - mise_languages: "python@3.12.11"
+description: "阿里云盘每日签到与奖励领取，支持白虎机密变量、单账号和多账号。"
+homepage: "https://www.aliyundrive.com"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: false
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 40 8 * * *"
+  random_range: 300
+  timeout: 5
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c "import requests"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/aliyundrive-checkin/main/checkin.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/aliyundrive-checkin/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/aliyundrive-checkin/main/checkin.py"
+env_schema:
+  - key: "ALIYUNDRIVE_REFRESH_TOKEN"
+    label: "单账号 Refresh Token"
+    type: "secret"
+    required: false
+    description: "阿里云盘 refresh_token；单账号与多账号配置二选一。"
+  - key: "ALIYUNDRIVE_ACCOUNTS"
+    label: "多账号 JSON"
+    type: "secret"
+    required: false
+    description: "JSON 数组；每项支持 label 及 refresh_token/refreshToken。配置后优先于单账号。"
+    placeholder: '[{"label":"账号1","refresh_token":"..."}]'
+  - key: "ALIYUNDRIVE_ACCOUNTS_FILE"
+    label: "账号文件路径"
+    type: "string"
+    required: false
+    description: "可选；已挂载账号 JSON 路径，兼容含 ALIYUN 数组的原 config.json。"
+sync_rules:
+  defaults:
+    timeout: 5
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/aliyundrive-checkin/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "daily-checkin"
+      name: "阿里云盘每日签到"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python checkin.py"
+      default_cron: "0 40 8 * * *"
+      enabled: true
+scenarios:
+  - id: "standard"
+    name: "每日签到"
+    description: "每天 08:40 执行签到并领取奖励，随机延迟最多 5 分钟。"
+    default: true
+    task_presets:
+      daily-checkin:
+        enabled: true
+        cron: "0 40 8 * * *"
