@@ -4,5 +4,10 @@
 .env
 .env.*
 node_modules/
+__pycache__/
+*.pyc
+_site/
+baihu
+*.db
 **/.iios-state.json
 **/.iios-state.json.tmp
