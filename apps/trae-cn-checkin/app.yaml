@@ -1,0 +1,82 @@
+spec_version: "v1"
+id: "trae-cn-checkin"
+name: "Trae CN 每日签到"
+version: "1.0.0"
+author: "taotie6"
+category: "福利签到"
+last_commit: "2026-10-19T00:00:00+08:00"
+template:
+  - tag: "TraeCnCheckin"
+  - mise_languages: "python@3.12.11"
+description: "Trae CN / TRAE SOLO CN 每日签到，支持导入 storage.json、多账号及挂载目录。"
+homepage: "https://www.trae.cn"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: false
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 25 8 * * *"
+  random_range: 300
+  timeout: 5
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c
+    "import requests; from Crypto.Cipher import AES"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/trae-cn-checkin/main/checkin.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/trae-cn-checkin/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/trae-cn-checkin/main/checkin.py"
+env_schema:
+  - key: "TRAE_CN_SESSIONS"
+    label: "Trae 登录态 JSON"
+    type: "secret"
+    required: false
+    description: "粘贴完整 storage.json 对象；多账号请填写对象数组，也支持带 label/storage 的包装格式。"
+    placeholder: '{"iCubeAuthInfo://icube.cloudide":"加密登录态"}'
+  - key: "TRAE_CN_DEVICE_ID"
+    label: "Trae 设备 ID"
+    type: "secret"
+    required: false
+    description: "建议填写 tt_net_config.config 中的 device_id；挂载客户端目录时可自动读取。"
+    placeholder: "纯数字设备 ID"
+  - key: "TRAE_CN_STORAGE_PATHS"
+    label: "storage.json 挂载路径"
+    type: "string"
+    required: false
+    description: "可选；单个 storage.json/客户端目录路径，或由多个路径组成的 JSON 字符串数组。"
+sync_rules:
+  defaults:
+    timeout: 5
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/trae-cn-checkin/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "daily-checkin"
+      name: "Trae CN 每日签到"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python checkin.py"
+      default_cron: "0 25 8 * * *"
+      enabled: true
+scenarios:
+  - id: "standard"
+    name: "每日签到"
+    description: "每天 08:25 执行，随机延迟最多 5 分钟。"
+    default: true
+    task_presets:
+      daily-checkin:
+        enabled: true
+        cron: "0 25 8 * * *"

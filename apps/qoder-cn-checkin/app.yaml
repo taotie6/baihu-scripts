@@ -1,0 +1,96 @@
+spec_version: "v1"
+id: "qoder-cn-checkin"
+name: "Qoder CN 用量与签到"
+version: "1.0.0"
+author: "taotie6"
+category: "福利签到"
+last_commit: "2026-10-19T00:00:00+08:00"
+template:
+  - tag: "QoderCnCheckin"
+  - mise_languages: "python@3.12.11"
+description: "Qoder CN 用量、额度与活跃数据汇总，并自动领取可领取的活动权益。"
+homepage: "https://qoder.com.cn"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: false
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 30 8 * * *"
+  random_range: 300
+  timeout: 5
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c
+    "import requests; from cryptography.hazmat.primitives.ciphers.aead import AESGCM"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/qoder-cn-checkin/main/checkin.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/qoder-cn-checkin/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/qoder-cn-checkin/main/checkin.py"
+env_schema:
+  - key: "QODER_CN_AUTHS"
+    label: "Qoder 登录凭证 JSON"
+    type: "secret"
+    required: false
+    description: "解密后的 auth JSON 对象或对象数组；也支持带 label/auth 的多账号包装格式。"
+    placeholder: '{"token":"...","expiresAt":"...","user":{"name":"..."}}'
+  - key: "QODER_CN_AUTH_FILE"
+    label: "凭证文件路径"
+    type: "string"
+    required: false
+    description: "可选；白虎主机中已挂载的 auths.json 路径。机密变量优先于此项。"
+  - key: "QODER_CN_PROFILE"
+    label: "Qoder 客户端目录"
+    type: "string"
+    required: false
+    description: "仅限原 Windows 用户环境；包含 Local State 和 auth.v1.dat 的目录。"
+  - key: "QODER_CN_CLIENT_TYPE"
+    label: "Cosy ClientType"
+    type: "string"
+    required: false
+    default: "10"
+  - key: "QODER_CN_VERSION"
+    label: "Qoder 客户端版本"
+    type: "string"
+    required: false
+    default: "0.3.4"
+  - key: "QODER_CN_HEATMAP_DAYS"
+    label: "热力图天数"
+    type: "string"
+    required: false
+    default: "30"
+sync_rules:
+  defaults:
+    timeout: 5
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/qoder-cn-checkin/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "daily-usage-and-checkin"
+      name: "Qoder CN 用量与签到"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python checkin.py usage"
+      default_cron: "0 30 8 * * *"
+      enabled: true
+scenarios:
+  - id: "standard"
+    name: "每日汇总与签到"
+    description: "每天 08:30 汇总用量并领取权益，随机延迟最多 5 分钟。"
+    default: true
+    task_presets:
+      daily-usage-and-checkin:
+        enabled: true
+        cron: "0 30 8 * * *"

@@ -1,0 +1,76 @@
+spec_version: "v1"
+id: "workbuddy-checkin"
+name: "WorkBuddy 每日积分"
+version: "1.0.0"
+author: "taotie6"
+category: "福利签到"
+last_commit: "2026-10-19T00:00:00+08:00"
+template:
+  - tag: "WorkBuddyCheckin"
+  - mise_languages: "python@3.12.11"
+description: "WorkBuddy 每日积分自动领取，支持导入单个或多个登录态及 5.6.0+ 加密登录态。"
+homepage: "https://copilot.tencent.com"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: false
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 20 8 * * *"
+  random_range: 300
+  timeout: 5
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c
+    "import requests; from Crypto.Cipher import AES"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/workbuddy-checkin/main/checkin.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/workbuddy-checkin/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/workbuddy-checkin/main/checkin.py"
+env_schema:
+  - key: "WORKBUDDY_SESSIONS"
+    label: "WorkBuddy 登录态 JSON"
+    type: "secret"
+    required: false
+    description: "粘贴一个完整 .info JSON 对象；多账号请填写由多个完整对象组成的 JSON 数组。"
+    placeholder: '{"account":{"uid":"..."},"auth":{"accessToken":...,"expiresAt":...}}'
+  - key: "WORKBUDDY_AUTH_DIR"
+    label: "登录态挂载目录"
+    type: "string"
+    required: false
+    description: "可选；白虎主机中包含 *.info 文件的已挂载目录。通常直接使用上方机密变量即可。"
+sync_rules:
+  defaults:
+    timeout: 5
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/workbuddy-checkin/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "daily-checkin"
+      name: "WorkBuddy 每日积分"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python checkin.py"
+      default_cron: "0 20 8 * * *"
+      enabled: true
+scenarios:
+  - id: "standard"
+    name: "每日领取"
+    description: "每天 08:20 执行，随机延迟最多 5 分钟。"
+    default: true
+    task_presets:
+      daily-checkin:
+        enabled: true
+        cron: "0 20 8 * * *"

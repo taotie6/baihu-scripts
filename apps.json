@@ -1,10 +1,10 @@
 {
   "version": "v1",
   "branch": "main",
-  "generated_at": "2026-10-17T16:00:00Z",
-  "generated_at_utc8": "2026-10-18 00:00:00",
-  "build_time": "2026-10-18 00:00:00",
-  "total_apps": 1,
+  "generated_at": "2026-10-18T16:00:00Z",
+  "generated_at_utc8": "2026-10-19 00:00:00",
+  "build_time": "2026-10-19 00:00:00",
+  "total_apps": 4,
   "apps": [
     {
       "spec_version": "v1",
@@ -102,6 +102,288 @@
       "manifest_raw": "spec_version: \"v1\"\nid: \"iios-checkin\"\nname: \"iios.fun 每日签到\"\nversion: \"1.0.1\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-18T00:00:00+08:00\"\ntemplate:\n  - tag: \"IiosCheckin\"\n  - mise_languages: \"node@23.11.1\"\ndescription: \"iios.fun 每日签到白虎应用，支持单账号、多账号、WASM 签名与白虎原生通知。\"\nhomepage: \"https://www.iios.fun\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 10 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- node --check\n    \"{app_dir}/repo/apps/iios-checkin/main/run.cjs\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- node --check \"{app_dir}/repo/apps/iios-checkin/main/baihu-shim.cjs\"\n    mise exec {mise_languages} -- node --check \"{app_dir}/repo/apps/iios-checkin/main/iios-original.js\"\nenv_schema:\n  - key: \"IIOS_TOKEN\"\n    label: \"单账号 Token\"\n    type: \"secret\"\n    required: false\n    description: \"抓取 Authorization 请求头，可带或不带 Basic 前缀。单账号与多账号配置二选一。\"\n    placeholder: \"Basic xxxxx 或 xxxxx\"\n  - key: \"IIOS_COOKIE\"\n    label: \"单账号 Cookie\"\n    type: \"secret\"\n    required: false\n    description: \"可选；填写浏览器请求中的完整 Cookie。\"\n  - key: \"IIOS_USER_AGENT\"\n    label: \"浏览器 User-Agent\"\n    type: \"string\"\n    required: false\n    default: \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36\"\n  - key: \"IIOS_SESSIONS\"\n    label: \"多账号 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"JSON 数组；每项支持 token、cookie、userAgent/ua、label。配置后优先于单账号。\"\n    placeholder: '[{\"label\":\"账号1\",\"token\":\"xxx\",\"cookie\":\"\",\"userAgent\":\"Mozilla/5.0 ...\"}]'\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/iios-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"iios.fun 每日签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"node run.cjs\"\n      default_cron: \"0 10 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日签到\"\n    description: \"每天 08:10 执行，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 10 8 * * *\"\n",
       "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/app.yaml",
       "updated_at": "2026-10-18 00:00:00"
+    },
+    {
+      "spec_version": "v1",
+      "id": "qoder-cn-checkin",
+      "name": "Qoder CN 用量与签到",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "福利签到",
+      "last_commit": "2026-10-19T00:00:00+08:00",
+      "description": "Qoder CN 用量、额度与活跃数据汇总，并自动领取可领取的活动权益。",
+      "homepage": "https://qoder.com.cn",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": false,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 30 8 * * *",
+        "random_range": 300,
+        "timeout": 5,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "QoderCnCheckin"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "daily-usage-and-checkin",
+          "name": "Qoder CN 用量与签到",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python checkin.py usage",
+          "default_cron": "0 30 8 * * *",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "QODER_CN_AUTHS",
+          "label": "Qoder 登录凭证 JSON",
+          "type": "secret",
+          "required": false,
+          "description": "解密后的 auth JSON 对象或对象数组；也支持带 label/auth 的多账号包装格式。",
+          "placeholder": "{\"token\":\"...\",\"expiresAt\":\"...\",\"user\":{\"name\":\"...\"}}"
+        },
+        {
+          "key": "QODER_CN_AUTH_FILE",
+          "label": "凭证文件路径",
+          "type": "string",
+          "required": false,
+          "description": "可选；白虎主机中已挂载的 auths.json 路径。机密变量优先于此项。"
+        },
+        {
+          "key": "QODER_CN_PROFILE",
+          "label": "Qoder 客户端目录",
+          "type": "string",
+          "required": false,
+          "description": "仅限原 Windows 用户环境；包含 Local State 和 auth.v1.dat 的目录。"
+        },
+        {
+          "key": "QODER_CN_CLIENT_TYPE",
+          "label": "Cosy ClientType",
+          "type": "string",
+          "required": false,
+          "default": "10"
+        },
+        {
+          "key": "QODER_CN_VERSION",
+          "label": "Qoder 客户端版本",
+          "type": "string",
+          "required": false,
+          "default": "0.3.4"
+        },
+        {
+          "key": "QODER_CN_HEATMAP_DAYS",
+          "label": "热力图天数",
+          "type": "string",
+          "required": false,
+          "default": "30"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "standard",
+          "name": "每日汇总与签到",
+          "description": "每天 08:30 汇总用量并领取权益，随机延迟最多 5 分钟。",
+          "default": true,
+          "task_presets": {
+            "daily-usage-and-checkin": {
+              "enabled": true,
+              "cron": "0 30 8 * * *"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 1,
+      "app_dir": "qoder-cn-checkin",
+      "manifest_path": "apps/qoder-cn-checkin/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"qoder-cn-checkin\"\nname: \"Qoder CN 用量与签到\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-19T00:00:00+08:00\"\ntemplate:\n  - tag: \"QoderCnCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"Qoder CN 用量、额度与活跃数据汇总，并自动领取可领取的活动权益。\"\nhomepage: \"https://qoder.com.cn\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 30 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c\n    \"import requests; from cryptography.hazmat.primitives.ciphers.aead import AESGCM\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qoder-cn-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qoder-cn-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qoder-cn-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"QODER_CN_AUTHS\"\n    label: \"Qoder 登录凭证 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"解密后的 auth JSON 对象或对象数组；也支持带 label/auth 的多账号包装格式。\"\n    placeholder: '{\"token\":\"...\",\"expiresAt\":\"...\",\"user\":{\"name\":\"...\"}}'\n  - key: \"QODER_CN_AUTH_FILE\"\n    label: \"凭证文件路径\"\n    type: \"string\"\n    required: false\n    description: \"可选；白虎主机中已挂载的 auths.json 路径。机密变量优先于此项。\"\n  - key: \"QODER_CN_PROFILE\"\n    label: \"Qoder 客户端目录\"\n    type: \"string\"\n    required: false\n    description: \"仅限原 Windows 用户环境；包含 Local State 和 auth.v1.dat 的目录。\"\n  - key: \"QODER_CN_CLIENT_TYPE\"\n    label: \"Cosy ClientType\"\n    type: \"string\"\n    required: false\n    default: \"10\"\n  - key: \"QODER_CN_VERSION\"\n    label: \"Qoder 客户端版本\"\n    type: \"string\"\n    required: false\n    default: \"0.3.4\"\n  - key: \"QODER_CN_HEATMAP_DAYS\"\n    label: \"热力图天数\"\n    type: \"string\"\n    required: false\n    default: \"30\"\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qoder-cn-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-usage-and-checkin\"\n      name: \"Qoder CN 用量与签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py usage\"\n      default_cron: \"0 30 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日汇总与签到\"\n    description: \"每天 08:30 汇总用量并领取权益，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-usage-and-checkin:\n        enabled: true\n        cron: \"0 30 8 * * *\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qoder-cn-checkin/app.yaml",
+      "updated_at": "2026-10-19 00:00:00"
+    },
+    {
+      "spec_version": "v1",
+      "id": "trae-cn-checkin",
+      "name": "Trae CN 每日签到",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "福利签到",
+      "last_commit": "2026-10-19T00:00:00+08:00",
+      "description": "Trae CN / TRAE SOLO CN 每日签到，支持导入 storage.json、多账号及挂载目录。",
+      "homepage": "https://www.trae.cn",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": false,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 25 8 * * *",
+        "random_range": 300,
+        "timeout": 5,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "TraeCnCheckin"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "daily-checkin",
+          "name": "Trae CN 每日签到",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python checkin.py",
+          "default_cron": "0 25 8 * * *",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "TRAE_CN_SESSIONS",
+          "label": "Trae 登录态 JSON",
+          "type": "secret",
+          "required": false,
+          "description": "粘贴完整 storage.json 对象；多账号请填写对象数组，也支持带 label/storage 的包装格式。",
+          "placeholder": "{\"iCubeAuthInfo://icube.cloudide\":\"加密登录态\"}"
+        },
+        {
+          "key": "TRAE_CN_DEVICE_ID",
+          "label": "Trae 设备 ID",
+          "type": "secret",
+          "required": false,
+          "description": "建议填写 tt_net_config.config 中的 device_id；挂载客户端目录时可自动读取。",
+          "placeholder": "纯数字设备 ID"
+        },
+        {
+          "key": "TRAE_CN_STORAGE_PATHS",
+          "label": "storage.json 挂载路径",
+          "type": "string",
+          "required": false,
+          "description": "可选；单个 storage.json/客户端目录路径，或由多个路径组成的 JSON 字符串数组。"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "standard",
+          "name": "每日签到",
+          "description": "每天 08:25 执行，随机延迟最多 5 分钟。",
+          "default": true,
+          "task_presets": {
+            "daily-checkin": {
+              "enabled": true,
+              "cron": "0 25 8 * * *"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 1,
+      "app_dir": "trae-cn-checkin",
+      "manifest_path": "apps/trae-cn-checkin/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"trae-cn-checkin\"\nname: \"Trae CN 每日签到\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-19T00:00:00+08:00\"\ntemplate:\n  - tag: \"TraeCnCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"Trae CN / TRAE SOLO CN 每日签到，支持导入 storage.json、多账号及挂载目录。\"\nhomepage: \"https://www.trae.cn\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 25 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c\n    \"import requests; from Crypto.Cipher import AES\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/trae-cn-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/trae-cn-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/trae-cn-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"TRAE_CN_SESSIONS\"\n    label: \"Trae 登录态 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"粘贴完整 storage.json 对象；多账号请填写对象数组，也支持带 label/storage 的包装格式。\"\n    placeholder: '{\"iCubeAuthInfo://icube.cloudide\":\"加密登录态\"}'\n  - key: \"TRAE_CN_DEVICE_ID\"\n    label: \"Trae 设备 ID\"\n    type: \"secret\"\n    required: false\n    description: \"建议填写 tt_net_config.config 中的 device_id；挂载客户端目录时可自动读取。\"\n    placeholder: \"纯数字设备 ID\"\n  - key: \"TRAE_CN_STORAGE_PATHS\"\n    label: \"storage.json 挂载路径\"\n    type: \"string\"\n    required: false\n    description: \"可选；单个 storage.json/客户端目录路径，或由多个路径组成的 JSON 字符串数组。\"\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/trae-cn-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"Trae CN 每日签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py\"\n      default_cron: \"0 25 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日签到\"\n    description: \"每天 08:25 执行，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 25 8 * * *\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/trae-cn-checkin/app.yaml",
+      "updated_at": "2026-10-19 00:00:00"
+    },
+    {
+      "spec_version": "v1",
+      "id": "workbuddy-checkin",
+      "name": "WorkBuddy 每日积分",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "福利签到",
+      "last_commit": "2026-10-19T00:00:00+08:00",
+      "description": "WorkBuddy 每日积分自动领取，支持导入单个或多个登录态及 5.6.0+ 加密登录态。",
+      "homepage": "https://copilot.tencent.com",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": false,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 20 8 * * *",
+        "random_range": 300,
+        "timeout": 5,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "WorkBuddyCheckin"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "daily-checkin",
+          "name": "WorkBuddy 每日积分",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python checkin.py",
+          "default_cron": "0 20 8 * * *",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "WORKBUDDY_SESSIONS",
+          "label": "WorkBuddy 登录态 JSON",
+          "type": "secret",
+          "required": false,
+          "description": "粘贴一个完整 .info JSON 对象；多账号请填写由多个完整对象组成的 JSON 数组。",
+          "placeholder": "{\"account\":{\"uid\":\"...\"},\"auth\":{\"accessToken\":...,\"expiresAt\":...}}"
+        },
+        {
+          "key": "WORKBUDDY_AUTH_DIR",
+          "label": "登录态挂载目录",
+          "type": "string",
+          "required": false,
+          "description": "可选；白虎主机中包含 *.info 文件的已挂载目录。通常直接使用上方机密变量即可。"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "standard",
+          "name": "每日领取",
+          "description": "每天 08:20 执行，随机延迟最多 5 分钟。",
+          "default": true,
+          "task_presets": {
+            "daily-checkin": {
+              "enabled": true,
+              "cron": "0 20 8 * * *"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 1,
+      "app_dir": "workbuddy-checkin",
+      "manifest_path": "apps/workbuddy-checkin/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"workbuddy-checkin\"\nname: \"WorkBuddy 每日积分\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-19T00:00:00+08:00\"\ntemplate:\n  - tag: \"WorkBuddyCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"WorkBuddy 每日积分自动领取，支持导入单个或多个登录态及 5.6.0+ 加密登录态。\"\nhomepage: \"https://copilot.tencent.com\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 20 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c\n    \"import requests; from Crypto.Cipher import AES\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/workbuddy-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/workbuddy-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/workbuddy-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"WORKBUDDY_SESSIONS\"\n    label: \"WorkBuddy 登录态 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"粘贴一个完整 .info JSON 对象；多账号请填写由多个完整对象组成的 JSON 数组。\"\n    placeholder: '{\"account\":{\"uid\":\"...\"},\"auth\":{\"accessToken\":...,\"expiresAt\":...}}'\n  - key: \"WORKBUDDY_AUTH_DIR\"\n    label: \"登录态挂载目录\"\n    type: \"string\"\n    required: false\n    description: \"可选；白虎主机中包含 *.info 文件的已挂载目录。通常直接使用上方机密变量即可。\"\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/workbuddy-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"WorkBuddy 每日积分\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py\"\n      default_cron: \"0 20 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日领取\"\n    description: \"每天 08:20 执行，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 20 8 * * *\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/workbuddy-checkin/app.yaml",
+      "updated_at": "2026-10-19 00:00:00"
     }
   ]
 }

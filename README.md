@@ -17,11 +17,32 @@
 | 应用 | 说明 | Manifest |
 | --- | --- | --- |
 | [iios-checkin](apps/iios-checkin/) | iios.fun 每日签到，支持单账号与多账号 | [app.yaml](apps/iios-checkin/app.yaml) |
+| [qoder-cn-checkin](apps/qoder-cn-checkin/) | Qoder CN 用量汇总与活动权益领取 | [app.yaml](apps/qoder-cn-checkin/app.yaml) |
+| [trae-cn-checkin](apps/trae-cn-checkin/) | Trae CN / TRAE SOLO CN 每日签到 | [app.yaml](apps/trae-cn-checkin/app.yaml) |
+| [workbuddy-checkin](apps/workbuddy-checkin/) | WorkBuddy 每日积分领取，支持加密登录态与多账号 | [app.yaml](apps/workbuddy-checkin/app.yaml) |
 
 iios.fun 远程 Manifest：
 
 ```text
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/app.yaml
+```
+
+Qoder CN 远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qoder-cn-checkin/app.yaml
+```
+
+WorkBuddy 远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/workbuddy-checkin/app.yaml
+```
+
+Trae CN 远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/trae-cn-checkin/app.yaml
 ```
 
 ## 仓库结构
@@ -30,7 +51,16 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/a
 .
 ├── .github/workflows/build-apps.yml
 ├── apps/
-│   └── iios-checkin/
+│   ├── iios-checkin/
+│   │   ├── app.yaml
+│   │   └── main/
+│   ├── qoder-cn-checkin/
+│   │   ├── app.yaml
+│   │   └── main/
+│   ├── trae-cn-checkin/
+│   │   ├── app.yaml
+│   │   └── main/
+│   └── workbuddy-checkin/
 │       ├── app.yaml
 │       └── main/
 ├── apps.json
