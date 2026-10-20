@@ -191,6 +191,33 @@ def _load_json_file(path: Path) -> Any:
         raise ValueError(f"读取账号文件 {path} 失败：{exc}") from exc
 
 
+def _normalise_accounts_text(text: str) -> str:
+    """移除复制粘贴或机密存储常见的 JSON 外层包装。"""
+    invisible = "\ufeff\u200b\u200e\u200f\u2060"
+    value = text.strip().strip(invisible).strip()
+
+    prefix = "ALIYUNDRIVE_ACCOUNTS="
+    if value.startswith(prefix):
+        value = value[len(prefix) :].strip().strip(invisible).strip()
+
+    if value.startswith("```") and value.endswith("```"):
+        lines = value.splitlines()
+        if len(lines) >= 3:
+            value = "\n".join(lines[1:-1]).strip().strip(invisible).strip()
+
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        inner = value[1:-1].strip()
+        if inner.startswith(("[", "{", "［", "｛")):
+            value = inner
+
+    outer_pairs = {"［": ("[", "］", "]"), "｛": ("{", "｝", "}")}
+    if value and value[0] in outer_pairs:
+        opening, fullwidth_closing, closing = outer_pairs[value[0]]
+        if value.endswith(fullwidth_closing):
+            value = opening + value[1:-1] + closing
+    return value
+
+
 def _restore_escaped_layout(text: str) -> str:
     """还原 JSON 字符串外被面板转义的换行和缩进。"""
     output: list[str] = []
@@ -226,21 +253,28 @@ def _restore_escaped_layout(text: str) -> str:
 
 
 def _parse_accounts_json(raw_accounts: str) -> Any:
+    normalised = _normalise_accounts_text(raw_accounts)
     try:
-        return json.loads(raw_accounts)
+        return json.loads(normalised)
     except json.JSONDecodeError as first_error:
-        restored = _restore_escaped_layout(raw_accounts)
-        if restored != raw_accounts:
+        restored = _restore_escaped_layout(normalised)
+        if restored != normalised:
             try:
                 return json.loads(restored)
             except json.JSONDecodeError as restored_error:
                 error = restored_error
         else:
             error = first_error
+        if not restored:
+            hint = "变量内容为空"
+        elif restored[0] not in "[{":
+            hint = f"开头字符不是 [ 或 {{（U+{ord(restored[0]):04X}）"
+        else:
+            hint = "请检查指定位置附近的逗号、引号或括号"
         raise ValueError(
             "ALIYUNDRIVE_ACCOUNTS 不是合法 JSON："
             f"{error.msg}（第 {error.lineno} 行，第 {error.colno} 列）。"
-            "请粘贴纯 JSON，不要包含 Markdown 代码围栏或 ALIYUNDRIVE_ACCOUNTS= 前缀"
+            + hint
         ) from error
 
 

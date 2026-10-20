@@ -53,6 +53,8 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/aliyundrive-ch
 [{"label":"账号1","refreshToken":"..."},{"label":"账号2","refreshToken":"..."}]
 ```
 
+脚本也会自动清理零宽字符、全角外括号和常见的复制粘贴包装。
+
 也可以把账号 JSON 挂载到白虎主机，并设置 `ALIYUNDRIVE_ACCOUNTS_FILE`。该文件
 既可以使用上述数组，也兼容原脚本的配置结构：
 

@@ -49,6 +49,23 @@ class LoadAccountsTest(unittest.TestCase):
 
         self.assertEqual(self.load(value), [("account\n1", "token-one")])
 
+    def test_accepts_leading_invisible_character(self) -> None:
+        value = '\u200b[{"label":"account-1","refreshToken":"token-one"}]'
+
+        self.assertEqual(self.load(value), [("account-1", "token-one")])
+
+    def test_accepts_common_copy_paste_wrappers(self) -> None:
+        documents = [
+            'ALIYUNDRIVE_ACCOUNTS=[{"refreshToken":"token-one"}]',
+            '```json\n[{"refreshToken":"token-one"}]\n```',
+            "'[{\"refreshToken\":\"token-one\"}]'",
+            '［{\"refreshToken\":\"token-one\"}］',
+        ]
+
+        for value in documents:
+            with self.subTest(value=value):
+                self.assertEqual(self.load(value), [("\u8d26\u53f71", "token-one")])
+
     def test_invalid_json_reports_location_without_echoing_secret(self) -> None:
         secret = "secret-token-that-must-not-be-logged"
         value = f'[{{"refreshToken":"{secret}"}},]'
