@@ -45,6 +45,7 @@ const pendingNotifications = [];
 
 globalThis.$prefs = {
   valueForKey(key) {
+    if (key === 'iios_success_cache' && state[key]) return String(state[key]);
     if (
       key === 'iios_token' &&
       state.iios_token &&

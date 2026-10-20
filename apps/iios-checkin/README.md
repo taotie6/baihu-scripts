@@ -51,7 +51,12 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/a
 
 如果账号来自不同浏览器或设备，每项必须填写抓取该 Token 时对应的完整
 `userAgent`，否则可能出现 HTTP 412。HTTP 403 通常表示 Token/Cookie 已失效，
-或请求被 Cloudflare 拦截。
+或请求被 Cloudflare 拦截。如果服务端签名响应明确表示“今日已签到”，
+脚本会将该账号记为成功；普通 403 仍会报错。
+
+脚本会在本地状态中保留当日已成功账号的非敏感指纹。当其他账号失败导致
+白虎重试整个任务时，已成功账号会直接跳过，不会被重复签到的 403
+覆盖为失败。
 
 ## 获取登录信息
 

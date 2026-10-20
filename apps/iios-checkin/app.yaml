@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "iios-checkin"
 name: "iios.fun 每日签到"
-version: "1.0.1"
+version: "1.0.2"
 author: "taotie6"
 category: "福利签到"
-last_commit: "2026-10-18T00:00:00+08:00"
+last_commit: "2026-10-20T00:00:00+08:00"
 template:
   - tag: "IiosCheckin"
   - mise_languages: "node@23.11.1"
