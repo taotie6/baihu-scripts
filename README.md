@@ -16,7 +16,7 @@
 
 | 应用 | 说明 | Manifest |
 | --- | --- | --- |
-| [aliyundrive-checkin](apps/aliyundrive-checkin/) | 阿里云盘每日签到与奖励领取 | [app.yaml](apps/aliyundrive-checkin/app.yaml) |
+| [aliyundrive-checkin](apps/aliyundrive-checkin/) | **已归档**：领取奖励需要官方客户端 | [app.yaml](apps/aliyundrive-checkin/app.yaml) |
 | [iios-checkin](apps/iios-checkin/) | iios.fun 每日签到，支持单账号与多账号 | [app.yaml](apps/iios-checkin/app.yaml) |
 | [qoder-cn-checkin](apps/qoder-cn-checkin/) | Qoder CN 用量汇总与活动权益领取 | [app.yaml](apps/qoder-cn-checkin/app.yaml) |
 | [qoder-global-checkin](apps/qoder-global-checkin/) | Qoder 国际版用量汇总与活动权益领取 | [app.yaml](apps/qoder-global-checkin/app.yaml) |

@@ -1,14 +1,14 @@
 spec_version: "v1"
 id: "aliyundrive-checkin"
-name: "阿里云盘每日签到"
+name: "阿里云盘每日签到（已归档）"
 version: "1.0.2"
 author: "taotie6"
-category: "福利签到"
+category: "已归档"
 last_commit: "2026-10-20T00:00:00+08:00"
 template:
   - tag: "AliyunDriveCheckin"
   - mise_languages: "python@3.12.11"
-description: "阿里云盘每日签到与奖励领取，支持白虎机密变量、单账号和多账号。"
+description: "【已归档】阿里云盘签到奖励必须通过官方客户端领取，脚本停止维护。"
 homepage: "https://www.aliyundrive.com"
 build_opts:
   force_setup: false
@@ -68,13 +68,13 @@ sync_rules:
       language: "{mise_languages}"
       command: "python checkin.py"
       default_cron: "0 40 8 * * *"
-      enabled: true
+      enabled: false
 scenarios:
   - id: "standard"
-    name: "每日签到"
-    description: "每天 08:40 执行签到并领取奖励，随机延迟最多 5 分钟。"
+    name: "已归档（不再执行）"
+    description: "奖励领取需要阿里云盘官方客户端，默认任务已停用。"
     default: true
     task_presets:
       daily-checkin:
-        enabled: true
+        enabled: false
         cron: "0 40 8 * * *"
