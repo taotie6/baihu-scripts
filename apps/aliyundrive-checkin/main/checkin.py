@@ -191,6 +191,59 @@ def _load_json_file(path: Path) -> Any:
         raise ValueError(f"读取账号文件 {path} 失败：{exc}") from exc
 
 
+def _restore_escaped_layout(text: str) -> str:
+    """还原 JSON 字符串外被面板转义的换行和缩进。"""
+    output: list[str] = []
+    in_string = False
+    escaped = False
+    index = 0
+    replacements = {"n": "\n", "r": "\r", "t": "\t"}
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            output.append(char)
+            index += 1
+            continue
+        if char == "\\" and index + 1 < len(text) and text[index + 1] in replacements:
+            output.append(replacements[text[index + 1]])
+            index += 2
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _parse_accounts_json(raw_accounts: str) -> Any:
+    try:
+        return json.loads(raw_accounts)
+    except json.JSONDecodeError as first_error:
+        restored = _restore_escaped_layout(raw_accounts)
+        if restored != raw_accounts:
+            try:
+                return json.loads(restored)
+            except json.JSONDecodeError as restored_error:
+                error = restored_error
+        else:
+            error = first_error
+        raise ValueError(
+            "ALIYUNDRIVE_ACCOUNTS 不是合法 JSON："
+            f"{error.msg}（第 {error.lineno} 行，第 {error.colno} 列）。"
+            "请粘贴纯 JSON，不要包含 Markdown 代码围栏或 ALIYUNDRIVE_ACCOUNTS= 前缀"
+        ) from error
+
+
 def load_accounts(args: argparse.Namespace) -> list[tuple[str, str]]:
     """按命令行文件、多账号变量、单账号变量、挂载文件顺序加载。"""
     if args.accounts_file:
@@ -198,10 +251,7 @@ def load_accounts(args: argparse.Namespace) -> list[tuple[str, str]]:
 
     raw_accounts = os.environ.get("ALIYUNDRIVE_ACCOUNTS", "").strip()
     if raw_accounts:
-        try:
-            return _normalise_accounts(json.loads(raw_accounts))
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"ALIYUNDRIVE_ACCOUNTS 不是合法 JSON：{exc.msg}") from exc
+        return _normalise_accounts(_parse_accounts_json(raw_accounts))
 
     refresh_token = os.environ.get("ALIYUNDRIVE_REFRESH_TOKEN", "").strip()
     if refresh_token:
