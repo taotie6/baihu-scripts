@@ -1,10 +1,10 @@
 {
   "version": "v1",
   "branch": "main",
-  "generated_at": "2026-10-19T16:00:00Z",
-  "generated_at_utc8": "2026-10-20 00:00:00",
-  "build_time": "2026-10-20 00:00:00",
-  "total_apps": 6,
+  "generated_at": "2026-10-20T16:00:00Z",
+  "generated_at_utc8": "2026-10-21 00:00:00",
+  "build_time": "2026-10-21 00:00:00",
+  "total_apps": 8,
   "apps": [
     {
       "spec_version": "v1",
@@ -191,6 +191,258 @@
       "manifest_raw": "spec_version: \"v1\"\nid: \"iios-checkin\"\nname: \"iios.fun 每日签到\"\nversion: \"1.0.2\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-20T00:00:00+08:00\"\ntemplate:\n  - tag: \"IiosCheckin\"\n  - mise_languages: \"node@23.11.1\"\ndescription: \"iios.fun 每日签到白虎应用，支持单账号、多账号、WASM 签名与白虎原生通知。\"\nhomepage: \"https://www.iios.fun\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 10 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- node --check\n    \"{app_dir}/repo/apps/iios-checkin/main/run.cjs\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- node --check \"{app_dir}/repo/apps/iios-checkin/main/baihu-shim.cjs\"\n    mise exec {mise_languages} -- node --check \"{app_dir}/repo/apps/iios-checkin/main/iios-original.js\"\nenv_schema:\n  - key: \"IIOS_TOKEN\"\n    label: \"单账号 Token\"\n    type: \"secret\"\n    required: false\n    description: \"抓取 Authorization 请求头，可带或不带 Basic 前缀。单账号与多账号配置二选一。\"\n    placeholder: \"Basic xxxxx 或 xxxxx\"\n  - key: \"IIOS_COOKIE\"\n    label: \"单账号 Cookie\"\n    type: \"secret\"\n    required: false\n    description: \"可选；填写浏览器请求中的完整 Cookie。\"\n  - key: \"IIOS_USER_AGENT\"\n    label: \"浏览器 User-Agent\"\n    type: \"string\"\n    required: false\n    default: \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36\"\n  - key: \"IIOS_SESSIONS\"\n    label: \"多账号 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"JSON 数组；每项支持 token、cookie、userAgent/ua、label。配置后优先于单账号。\"\n    placeholder: '[{\"label\":\"账号1\",\"token\":\"xxx\",\"cookie\":\"\",\"userAgent\":\"Mozilla/5.0 ...\"}]'\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/iios-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"iios.fun 每日签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"node run.cjs\"\n      default_cron: \"0 10 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日签到\"\n    description: \"每天 08:10 执行，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 10 8 * * *\"\n",
       "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/app.yaml",
       "updated_at": "2026-10-20 00:00:00"
+    },
+    {
+      "spec_version": "v1",
+      "id": "qieman-sync",
+      "name": "且慢顾投计划同步",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "投资工具",
+      "last_commit": "2026-10-21T00:00:00+08:00",
+      "description": "抓取且慢顾投计划持仓与调仓记录，整理后通过白虎原生通知推送，可选同步飞书多维表格。",
+      "homepage": "https://qieman.com/longwin/compositions/LONG_WIN",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": false,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 30 20 * * 1-5",
+        "random_range": 300,
+        "timeout": 10,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "QiemanSync"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "sync-qieman",
+          "name": "且慢顾投计划同步",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python sync_qieman.py",
+          "default_cron": "0 30 20 * * 1-5",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "QIEMAN_PLANS",
+          "label": "且慢计划",
+          "type": "string",
+          "required": false,
+          "default": "LONG_WIN:长赢指数150计划",
+          "description": "逗号分隔的 计划代码:显示名称；例如 LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划。"
+        },
+        {
+          "key": "QIEMAN_HISTORY_LIMIT",
+          "label": "最近调仓批次数",
+          "type": "string",
+          "required": false,
+          "default": "3",
+          "description": "白虎通知中显示最近多少批调仓，范围 1-20。"
+        },
+        {
+          "key": "QIEMAN_NOTIFY_MAX_LENGTH",
+          "label": "通知最大字符数",
+          "type": "string",
+          "required": false,
+          "default": "3500"
+        },
+        {
+          "key": "FEISHU_APP_ID",
+          "label": "飞书应用 App ID",
+          "type": "string",
+          "required": false,
+          "description": "可选；不配置任何 FEISHU_* 变量时仅通过白虎通知推送。"
+        },
+        {
+          "key": "FEISHU_APP_SECRET",
+          "label": "飞书应用 App Secret",
+          "type": "secret",
+          "required": false,
+          "description": "可选；启用飞书同步时与 App ID、Table Token 一起配置。"
+        },
+        {
+          "key": "FEISHU_TABLE_TOKEN",
+          "label": "飞书多维表格 Token",
+          "type": "secret",
+          "required": false,
+          "description": "可选；多维表格 app_token，或 FEISHU_TOKEN_TYPE=wiki 时填写 Wiki 节点 Token。"
+        },
+        {
+          "key": "FEISHU_TOKEN_TYPE",
+          "label": "飞书 Token 类型",
+          "type": "string",
+          "required": false,
+          "default": "bitable",
+          "description": "bitable 或 wiki。"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "notify-only",
+          "name": "白虎通知",
+          "description": "工作日 20:30 获取并整理数据，通过白虎原生通知推送。",
+          "default": true,
+          "task_presets": {
+            "sync-qieman": {
+              "enabled": true,
+              "cron": "0 30 20 * * 1-5"
+            }
+          }
+        },
+        {
+          "id": "notify-and-feishu",
+          "name": "白虎通知 + 飞书",
+          "description": "配置全部 FEISHU_* 变量后，在通知之外增量同步飞书多维表格。",
+          "task_presets": {
+            "sync-qieman": {
+              "enabled": true,
+              "cron": "0 30 20 * * 1-5"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 2,
+      "app_dir": "qieman-sync",
+      "manifest_path": "apps/qieman-sync/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"qieman-sync\"\nname: \"且慢顾投计划同步\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"投资工具\"\nlast_commit: \"2026-10-21T00:00:00+08:00\"\ntemplate:\n  - tag: \"QiemanSync\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"抓取且慢顾投计划持仓与调仓记录，整理后通过白虎原生通知推送，可选同步飞书多维表格。\"\nhomepage: \"https://qieman.com/longwin/compositions/LONG_WIN\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 30 20 * * 1-5\"\n  random_range: 300\n  timeout: 10\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qieman-sync/main/sync_qieman.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qieman-sync/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qieman-sync/main/sync_qieman.py\"\nenv_schema:\n  - key: \"QIEMAN_PLANS\"\n    label: \"且慢计划\"\n    type: \"string\"\n    required: false\n    default: \"LONG_WIN:长赢指数150计划\"\n    description: \"逗号分隔的 计划代码:显示名称；例如 LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划。\"\n  - key: \"QIEMAN_HISTORY_LIMIT\"\n    label: \"最近调仓批次数\"\n    type: \"string\"\n    required: false\n    default: \"3\"\n    description: \"白虎通知中显示最近多少批调仓，范围 1-20。\"\n  - key: \"QIEMAN_NOTIFY_MAX_LENGTH\"\n    label: \"通知最大字符数\"\n    type: \"string\"\n    required: false\n    default: \"3500\"\n  - key: \"FEISHU_APP_ID\"\n    label: \"飞书应用 App ID\"\n    type: \"string\"\n    required: false\n    description: \"可选；不配置任何 FEISHU_* 变量时仅通过白虎通知推送。\"\n  - key: \"FEISHU_APP_SECRET\"\n    label: \"飞书应用 App Secret\"\n    type: \"secret\"\n    required: false\n    description: \"可选；启用飞书同步时与 App ID、Table Token 一起配置。\"\n  - key: \"FEISHU_TABLE_TOKEN\"\n    label: \"飞书多维表格 Token\"\n    type: \"secret\"\n    required: false\n    description: \"可选；多维表格 app_token，或 FEISHU_TOKEN_TYPE=wiki 时填写 Wiki 节点 Token。\"\n  - key: \"FEISHU_TOKEN_TYPE\"\n    label: \"飞书 Token 类型\"\n    type: \"string\"\n    required: false\n    default: \"bitable\"\n    description: \"bitable 或 wiki。\"\nsync_rules:\n  defaults:\n    timeout: 10\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qieman-sync/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"sync-qieman\"\n      name: \"且慢顾投计划同步\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python sync_qieman.py\"\n      default_cron: \"0 30 20 * * 1-5\"\n      enabled: true\nscenarios:\n  - id: \"notify-only\"\n    name: \"白虎通知\"\n    description: \"工作日 20:30 获取并整理数据，通过白虎原生通知推送。\"\n    default: true\n    task_presets:\n      sync-qieman:\n        enabled: true\n        cron: \"0 30 20 * * 1-5\"\n  - id: \"notify-and-feishu\"\n    name: \"白虎通知 + 飞书\"\n    description: \"配置全部 FEISHU_* 变量后，在通知之外增量同步飞书多维表格。\"\n    task_presets:\n      sync-qieman:\n        enabled: true\n        cron: \"0 30 20 * * 1-5\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-sync/app.yaml",
+      "updated_at": "2026-10-21 00:00:00"
+    },
+    {
+      "spec_version": "v1",
+      "id": "qieman-valuation",
+      "name": "且慢每日估值",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "投资工具",
+      "last_commit": "2026-10-21T00:00:00+08:00",
+      "description": "抓取且慢指数估值与债券收益，整理后通过白虎原生通知推送，可选同步飞书多维表格。",
+      "homepage": "https://qieman.com/idx-eval",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": false,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 45 20 * * 1-5",
+        "random_range": 300,
+        "timeout": 10,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "QiemanValuation"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "sync-qieman-valuation",
+          "name": "且慢每日估值",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python sync_qieman_valuation.py",
+          "default_cron": "0 45 20 * * 1-5",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "QIEMAN_VALUATION_LIMIT",
+          "label": "估值榜单数量",
+          "type": "string",
+          "required": false,
+          "default": "5",
+          "description": "通知中低估与高估榜单各显示多少个指数，范围 1-20。"
+        },
+        {
+          "key": "QIEMAN_NOTIFY_MAX_LENGTH",
+          "label": "通知最大字符数",
+          "type": "string",
+          "required": false,
+          "default": "3500"
+        },
+        {
+          "key": "FEISHU_APP_ID",
+          "label": "飞书应用 App ID",
+          "type": "string",
+          "required": false,
+          "description": "可选；不配置任何 FEISHU_* 变量时仅通过白虎通知推送。"
+        },
+        {
+          "key": "FEISHU_APP_SECRET",
+          "label": "飞书应用 App Secret",
+          "type": "secret",
+          "required": false,
+          "description": "可选；启用飞书同步时与 App ID、Table Token 一起配置。"
+        },
+        {
+          "key": "FEISHU_TABLE_TOKEN",
+          "label": "飞书多维表格 Token",
+          "type": "secret",
+          "required": false,
+          "description": "可选；多维表格 app_token，或 FEISHU_TOKEN_TYPE=wiki 时填写 Wiki 节点 Token。"
+        },
+        {
+          "key": "FEISHU_TOKEN_TYPE",
+          "label": "飞书 Token 类型",
+          "type": "string",
+          "required": false,
+          "default": "bitable",
+          "description": "bitable 或 wiki。"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "notify-only",
+          "name": "白虎通知",
+          "description": "工作日 20:45 获取并整理估值数据，通过白虎原生通知推送。",
+          "default": true,
+          "task_presets": {
+            "sync-qieman-valuation": {
+              "enabled": true,
+              "cron": "0 45 20 * * 1-5"
+            }
+          }
+        },
+        {
+          "id": "notify-and-feishu",
+          "name": "白虎通知 + 飞书",
+          "description": "配置全部 FEISHU_* 变量后，在通知之外同步每日指数估值和每日债券收益。",
+          "task_presets": {
+            "sync-qieman-valuation": {
+              "enabled": true,
+              "cron": "0 45 20 * * 1-5"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 2,
+      "app_dir": "qieman-valuation",
+      "manifest_path": "apps/qieman-valuation/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"qieman-valuation\"\nname: \"且慢每日估值\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"投资工具\"\nlast_commit: \"2026-10-21T00:00:00+08:00\"\ntemplate:\n  - tag: \"QiemanValuation\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"抓取且慢指数估值与债券收益，整理后通过白虎原生通知推送，可选同步飞书多维表格。\"\nhomepage: \"https://qieman.com/idx-eval\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 45 20 * * 1-5\"\n  random_range: 300\n  timeout: 10\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qieman-valuation/main/sync_qieman_valuation.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qieman-valuation/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qieman-valuation/main/sync_qieman_valuation.py\"\nenv_schema:\n  - key: \"QIEMAN_VALUATION_LIMIT\"\n    label: \"估值榜单数量\"\n    type: \"string\"\n    required: false\n    default: \"5\"\n    description: \"通知中低估与高估榜单各显示多少个指数，范围 1-20。\"\n  - key: \"QIEMAN_NOTIFY_MAX_LENGTH\"\n    label: \"通知最大字符数\"\n    type: \"string\"\n    required: false\n    default: \"3500\"\n  - key: \"FEISHU_APP_ID\"\n    label: \"飞书应用 App ID\"\n    type: \"string\"\n    required: false\n    description: \"可选；不配置任何 FEISHU_* 变量时仅通过白虎通知推送。\"\n  - key: \"FEISHU_APP_SECRET\"\n    label: \"飞书应用 App Secret\"\n    type: \"secret\"\n    required: false\n    description: \"可选；启用飞书同步时与 App ID、Table Token 一起配置。\"\n  - key: \"FEISHU_TABLE_TOKEN\"\n    label: \"飞书多维表格 Token\"\n    type: \"secret\"\n    required: false\n    description: \"可选；多维表格 app_token，或 FEISHU_TOKEN_TYPE=wiki 时填写 Wiki 节点 Token。\"\n  - key: \"FEISHU_TOKEN_TYPE\"\n    label: \"飞书 Token 类型\"\n    type: \"string\"\n    required: false\n    default: \"bitable\"\n    description: \"bitable 或 wiki。\"\nsync_rules:\n  defaults:\n    timeout: 10\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qieman-valuation/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"sync-qieman-valuation\"\n      name: \"且慢每日估值\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python sync_qieman_valuation.py\"\n      default_cron: \"0 45 20 * * 1-5\"\n      enabled: true\nscenarios:\n  - id: \"notify-only\"\n    name: \"白虎通知\"\n    description: \"工作日 20:45 获取并整理估值数据，通过白虎原生通知推送。\"\n    default: true\n    task_presets:\n      sync-qieman-valuation:\n        enabled: true\n        cron: \"0 45 20 * * 1-5\"\n  - id: \"notify-and-feishu\"\n    name: \"白虎通知 + 飞书\"\n    description: \"配置全部 FEISHU_* 变量后，在通知之外同步每日指数估值和每日债券收益。\"\n    task_presets:\n      sync-qieman-valuation:\n        enabled: true\n        cron: \"0 45 20 * * 1-5\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuation/app.yaml",
+      "updated_at": "2026-10-21 00:00:00"
     },
     {
       "spec_version": "v1",

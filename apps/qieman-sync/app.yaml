@@ -1,0 +1,109 @@
+spec_version: "v1"
+id: "qieman-sync"
+name: "且慢顾投计划同步"
+version: "1.0.0"
+author: "taotie6"
+category: "投资工具"
+last_commit: "2026-10-21T00:00:00+08:00"
+template:
+  - tag: "QiemanSync"
+  - mise_languages: "python@3.12.11"
+description: "抓取且慢顾投计划持仓与调仓记录，整理后通过白虎原生通知推送，可选同步飞书多维表格。"
+homepage: "https://qieman.com/longwin/compositions/LONG_WIN"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: false
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 30 20 * * 1-5"
+  random_range: 300
+  timeout: 10
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c "import requests"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/qieman-sync/main/sync_qieman.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/qieman-sync/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/qieman-sync/main/sync_qieman.py"
+env_schema:
+  - key: "QIEMAN_PLANS"
+    label: "且慢计划"
+    type: "string"
+    required: false
+    default: "LONG_WIN:长赢指数150计划"
+    description: "逗号分隔的 计划代码:显示名称；例如 LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划。"
+  - key: "QIEMAN_HISTORY_LIMIT"
+    label: "最近调仓批次数"
+    type: "string"
+    required: false
+    default: "3"
+    description: "白虎通知中显示最近多少批调仓，范围 1-20。"
+  - key: "QIEMAN_NOTIFY_MAX_LENGTH"
+    label: "通知最大字符数"
+    type: "string"
+    required: false
+    default: "3500"
+  - key: "FEISHU_APP_ID"
+    label: "飞书应用 App ID"
+    type: "string"
+    required: false
+    description: "可选；不配置任何 FEISHU_* 变量时仅通过白虎通知推送。"
+  - key: "FEISHU_APP_SECRET"
+    label: "飞书应用 App Secret"
+    type: "secret"
+    required: false
+    description: "可选；启用飞书同步时与 App ID、Table Token 一起配置。"
+  - key: "FEISHU_TABLE_TOKEN"
+    label: "飞书多维表格 Token"
+    type: "secret"
+    required: false
+    description: "可选；多维表格 app_token，或 FEISHU_TOKEN_TYPE=wiki 时填写 Wiki 节点 Token。"
+  - key: "FEISHU_TOKEN_TYPE"
+    label: "飞书 Token 类型"
+    type: "string"
+    required: false
+    default: "bitable"
+    description: "bitable 或 wiki。"
+sync_rules:
+  defaults:
+    timeout: 10
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/qieman-sync/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "sync-qieman"
+      name: "且慢顾投计划同步"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python sync_qieman.py"
+      default_cron: "0 30 20 * * 1-5"
+      enabled: true
+scenarios:
+  - id: "notify-only"
+    name: "白虎通知"
+    description: "工作日 20:30 获取并整理数据，通过白虎原生通知推送。"
+    default: true
+    task_presets:
+      sync-qieman:
+        enabled: true
+        cron: "0 30 20 * * 1-5"
+  - id: "notify-and-feishu"
+    name: "白虎通知 + 飞书"
+    description: "配置全部 FEISHU_* 变量后，在通知之外增量同步飞书多维表格。"
+    task_presets:
+      sync-qieman:
+        enabled: true
+        cron: "0 30 20 * * 1-5"

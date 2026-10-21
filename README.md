@@ -18,6 +18,8 @@
 | --- | --- | --- |
 | [aliyundrive-checkin](apps/aliyundrive-checkin/) | **已归档**：领取奖励需要官方客户端 | [app.yaml](apps/aliyundrive-checkin/app.yaml) |
 | [iios-checkin](apps/iios-checkin/) | iios.fun 每日签到，支持单账号与多账号 | [app.yaml](apps/iios-checkin/app.yaml) |
+| [qieman-sync](apps/qieman-sync/) | 且慢顾投计划数据整理与推送，可选同步飞书 | [app.yaml](apps/qieman-sync/app.yaml) |
+| [qieman-valuation](apps/qieman-valuation/) | 且慢指数估值与债券收益整理推送，可选同步飞书 | [app.yaml](apps/qieman-valuation/app.yaml) |
 | [qoder-cn-checkin](apps/qoder-cn-checkin/) | Qoder CN 用量汇总与活动权益领取 | [app.yaml](apps/qoder-cn-checkin/app.yaml) |
 | [qoder-global-checkin](apps/qoder-global-checkin/) | Qoder 国际版用量汇总与活动权益领取 | [app.yaml](apps/qoder-global-checkin/app.yaml) |
 | [trae-cn-checkin](apps/trae-cn-checkin/) | Trae CN / TRAE SOLO CN 每日签到 | [app.yaml](apps/trae-cn-checkin/app.yaml) |
@@ -59,6 +61,18 @@ Trae CN 远程 Manifest：
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/trae-cn-checkin/app.yaml
 ```
 
+且慢顾投计划同步远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-sync/app.yaml
+```
+
+且慢每日估值远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuation/app.yaml
+```
+
 ## 仓库结构
 
 ```text
@@ -69,6 +83,12 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/trae-cn-checki
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── iios-checkin/
+│   │   ├── app.yaml
+│   │   └── main/
+│   ├── qieman-sync/
+│   │   ├── app.yaml
+│   │   └── main/
+│   ├── qieman-valuation/
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── qoder-cn-checkin/
