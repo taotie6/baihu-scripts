@@ -9,9 +9,7 @@ FEISHU_* 环境变量后，额外同步到飞书多维表格。
 from __future__ import annotations
 
 import argparse
-import asyncio
 import hashlib
-import inspect
 import json
 import math
 import os
@@ -27,6 +25,7 @@ import requests
 
 
 QIEMAN_BASE_URL = "https://qieman.com"
+DEFAULT_BAIHU_NOTIFY_URL = "http://localhost:8052/api/v1/notify/send"
 TEXT_FIELD = 1
 NUMBER_FIELD = 2
 SELECT_FIELD = 3
@@ -296,20 +295,47 @@ def render_notification(report: dict[str, Any], limit: int, feishu_status: str) 
 
 
 def notify_baihu(content: str) -> bool:
-    try:
-        import baihu  # type: ignore[import-not-found]
-    except ImportError:
-        log("未检测到白虎运行时，跳过原生通知")
+    """通过白虎脚本调用接口主动推送通知。"""
+    token = os.environ.get("BHPKG_NOTIFY_TOKEN", "").strip()
+    channel = os.environ.get("BHPKG_NOTIFY_CHANNEL", "").strip()
+    missing = [
+        key
+        for key, value in (
+            ("BHPKG_NOTIFY_TOKEN", token),
+            ("BHPKG_NOTIFY_CHANNEL", channel),
+        )
+        if not value
+    ]
+    if missing:
+        log(
+            "未配置白虎主动推送参数 "
+            + "、".join(missing)
+            + "，跳过通知；请在“消息推送 → 脚本调用说明/渠道列表”中获取。"
+            "任务的“通知配置”绑定不会自动注入这些变量"
+        )
         return False
+
+    url = (
+        os.environ.get("BHPKG_NOTIFY_URL", "").strip()
+        or DEFAULT_BAIHU_NOTIFY_URL
+    )
     try:
-        notify = getattr(baihu, "notify", None)
-        if not callable(notify):
-            log("白虎运行时未提供 notify，跳过原生通知")
-            return False
-        result = notify("且慢每日估值", content)
-        if inspect.isawaitable(result):
-            asyncio.run(result)
-        log("白虎原生通知已发送")
+        response = requests.post(
+            url,
+            headers={"notify-token": token},
+            json={
+                "channel_id": channel,
+                "title": "且慢每日估值",
+                "content": content,
+                "options": {"format": "markdown"},
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if data.get("code") != 200:
+            raise RuntimeError(data.get("msg") or f"返回代码 {data.get('code')}")
+        log("白虎通知已发送")
         return True
     except Exception as exc:
         log(f"WARN: 白虎通知发送失败：{exc}", error=True)
@@ -371,7 +397,10 @@ class FeishuBitableClient:
             raise RuntimeError("获取飞书访问令牌时返回了非 JSON 响应") from exc
         if data.get("code") != 0 or not data.get("tenant_access_token"):
             raise RuntimeError(
-                f"获取飞书 tenant_access_token 失败：{data.get('msg') or data.get('code')}"
+                "获取飞书 tenant_access_token 失败："
+                f"{data.get('msg') or data.get('code')}。"
+                "请确认 FEISHU_APP_ID 与 FEISHU_APP_SECRET 来自同一个飞书自建应用；"
+                "此步骤发生在 Wiki Token 解析之前，与 FEISHU_TABLE_TOKEN 无关"
             )
         return str(data["tenant_access_token"])
 

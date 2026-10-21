@@ -109,5 +109,53 @@ class FeishuConfigTest(unittest.TestCase):
         self.assertEqual(config.token_type, "bitable")
 
 
+class BaihuNotificationTest(unittest.TestCase):
+    def test_posts_notification_to_baihu_api(self) -> None:
+        values = {
+            "BHPKG_NOTIFY_TOKEN": "notify-secret",
+            "BHPKG_NOTIFY_CHANNEL": "channel-1",
+        }
+        with patch.dict(os.environ, values, clear=True), patch.object(
+            VALUATION.requests, "post"
+        ) as post:
+            post.return_value.json.return_value = {"code": 200, "msg": "success"}
+            self.assertTrue(VALUATION.notify_baihu("测试内容"))
+
+        post.assert_called_once_with(
+            VALUATION.DEFAULT_BAIHU_NOTIFY_URL,
+            headers={"notify-token": "notify-secret"},
+            json={
+                "channel_id": "channel-1",
+                "title": "且慢每日估值",
+                "content": "测试内容",
+                "options": {"format": "markdown"},
+            },
+            timeout=30,
+        )
+
+    def test_skips_notification_when_script_credentials_are_missing(self) -> None:
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            VALUATION.requests, "post"
+        ) as post:
+            self.assertFalse(VALUATION.notify_baihu("测试内容"))
+        post.assert_not_called()
+
+
+class FeishuClientErrorTest(unittest.TestCase):
+    def test_invalid_app_secret_error_explains_wiki_token_is_not_involved(self) -> None:
+        config = VALUATION.FeishuConfig(
+            "app", "bad-secret", "wikcn-token", "bitable"
+        )
+        client = VALUATION.FeishuBitableClient(config)
+        with patch.object(VALUATION.requests, "post") as post:
+            post.return_value.json.return_value = {
+                "code": 10003,
+                "msg": "app secret invalid",
+            }
+            with self.assertRaisesRegex(RuntimeError, "同一个飞书自建应用") as context:
+                client._tenant_token()
+        self.assertIn("FEISHU_TABLE_TOKEN 无关", str(context.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

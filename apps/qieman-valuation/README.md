@@ -22,6 +22,18 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuati
 指数通知同时显示 PE、PE 历史百分位、PB 和 PB 历史百分位。债券收益显示 YTM、
 历史百分位和估值状态。百分位越接近 0%，表示指标越靠近历史低位。
 
+## 白虎通知配置
+
+脚本主动推送需要配置：
+
+- `BHPKG_NOTIFY_TOKEN`：在白虎“消息推送 → 脚本调用说明”中复制。
+- `BHPKG_NOTIFY_CHANNEL`：在白虎“消息推送 → 渠道列表”中复制渠道 ID。
+- `BHPKG_NOTIFY_URL`：默认 `http://localhost:8052/api/v1/notify/send`，通常无需修改。
+
+任务页面的“通知配置”用于白虎自身的任务事件通知，与脚本主动发送整理后的内容是
+两套机制；仅绑定任务通知不会自动注入上述变量。如果日志提示“未配置白虎主动推送
+参数”，请在应用环境变量中补齐 Token 和渠道 ID。
+
 ## 可选飞书同步
 
 同时配置以下三个变量才会启用飞书写入；全部留空时自动跳过：
@@ -30,12 +42,48 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuati
 - `FEISHU_APP_SECRET`（机密变量）
 - `FEISHU_TABLE_TOKEN`（机密变量）
 
+### 获取 FEISHU_TABLE_TOKEN
+
+`FEISHU_TABLE_TOKEN` 是多维表格的 `app_token`，可以从浏览器地址栏中取得。
+
+普通多维表格的地址通常类似：
+
+```text
+https://example.feishu.cn/base/AbCdEfGh...?table=tbl123...
+```
+
+此时配置：
+
+```text
+FEISHU_TABLE_TOKEN=AbCdEfGh...
+FEISHU_TOKEN_TYPE=bitable
+```
+
+`?table=tbl123...` 中的 `tbl123...` 是单个数据表的 `table_id`，不是
+`FEISHU_TABLE_TOKEN`，不要填入该变量。
+
+如果多维表格位于知识库中，地址通常类似：
+
+```text
+https://example.feishu.cn/wiki/wikcnXXXX...
+```
+
+此时配置：
+
+```text
+FEISHU_TABLE_TOKEN=wikcnXXXX...
+FEISHU_TOKEN_TYPE=wiki
+```
+
+脚本会通过 Wiki 节点 Token 自动解析底层多维表格的 `app_token`。
+
+如果报错 `app secret invalid`，说明脚本尚未进入 Wiki Token 解析：请确认
+`FEISHU_APP_ID` 和 `FEISHU_APP_SECRET` 从同一个飞书自建应用复制，Secret 没有填成
+Verification Token、Encrypt Key 或其他凭据。该错误与 `FEISHU_TABLE_TOKEN` 无关。
+
 飞书应用需要多维表格读写权限，并需要被添加为目标多维表格的协作者。脚本会创建
 或复用“每日指数估值”和“每日债券收益”两张表，自动补齐字段与字段说明，并分别按
 指数代码、债券代码批量新增或更新。
-
-如果填写的是 Wiki 节点 Token，再设置 `FEISHU_TOKEN_TYPE=wiki`；普通多维表格
-保持默认值 `bitable`。
 
 ## 本地检查
 

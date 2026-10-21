@@ -1,7 +1,7 @@
 spec_version: "v1"
 id: "qieman-valuation"
 name: "且慢每日估值"
-version: "1.0.0"
+version: "1.0.1"
 author: "taotie6"
 category: "投资工具"
 last_commit: "2026-10-21T00:00:00+08:00"
@@ -49,6 +49,22 @@ env_schema:
     type: "string"
     required: false
     default: "3500"
+  - key: "BHPKG_NOTIFY_TOKEN"
+    label: "白虎脚本调用 Token"
+    type: "secret"
+    required: false
+    description: "主动推送所需；在白虎“消息推送 → 脚本调用说明”中获取。"
+  - key: "BHPKG_NOTIFY_CHANNEL"
+    label: "白虎通知渠道 ID"
+    type: "string"
+    required: false
+    description: "主动推送所需；在白虎“消息推送 → 渠道列表”中获取。"
+  - key: "BHPKG_NOTIFY_URL"
+    label: "白虎通知接口地址"
+    type: "string"
+    required: false
+    default: "http://localhost:8052/api/v1/notify/send"
+    description: "通常保持默认值；白虎服务地址不同才需要修改。"
   - key: "FEISHU_APP_ID"
     label: "飞书应用 App ID"
     type: "string"
