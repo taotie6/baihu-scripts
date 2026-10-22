@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import os
 import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -20,7 +22,11 @@ SPEC.loader.exec_module(QIEMAN)
 class ParsePlansTest(unittest.TestCase):
     def test_defaults_and_multiple_plans(self) -> None:
         self.assertEqual(
-            QIEMAN.parse_plans(""), {"LONG_WIN": "长赢指数150计划"}
+            QIEMAN.parse_plans(""),
+            {
+                "LONG_WIN": "长赢指数150计划",
+                "LONG_WIN_S": "长赢指数S计划",
+            },
         )
         self.assertEqual(
             QIEMAN.parse_plans("LONG_WIN:计划 A, LONG_WIN_S:计划 B"),
@@ -176,6 +182,129 @@ class FeishuClientErrorTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "同一个飞书自建应用") as context:
                 client._tenant_token()
         self.assertIn("FEISHU_TABLE_TOKEN 无关", str(context.exception))
+
+
+class FeishuSyncTest(unittest.TestCase):
+    def setUp(self) -> None:
+        config = QIEMAN.FeishuConfig("app", "secret", "base-token", "bitable")
+        self.client = QIEMAN.FeishuBitableClient(config)
+
+    def test_ensure_fields_creates_missing_and_updates_stale_description(self) -> None:
+        expected = [
+            {"name": "基金代码", "type": 1, "desc": "新说明"},
+            {"name": "基金名称", "type": 1, "desc": "名称说明"},
+        ]
+        existing = {
+            "基金代码": {
+                "field_id": "fld-code",
+                "field_name": "基金代码",
+                "type": 2,
+                "description": {"text": "旧说明"},
+            }
+        }
+        with patch.object(self.client, "list_fields", return_value=existing), patch.object(
+            self.client, "request"
+        ) as request:
+            result = self.client.ensure_fields("tbl-holding", expected)
+
+        self.assertEqual(result, (1, 1))
+        self.assertEqual(request.call_count, 2)
+        payloads = [call.kwargs["data"] for call in request.call_args_list]
+        self.assertEqual({payload["description"]["text"] for payload in payloads}, {"新说明", "名称说明"})
+        self.assertEqual(request.call_args_list[0].kwargs["data"]["type"], 2)
+
+    def test_sync_report_counts_holdings_and_skips_existing_history(self) -> None:
+        report = {
+            "code": "LONG_WIN",
+            "name": "测试计划",
+            "all_funds": [
+                {
+                    "fund_code": "000001",
+                    "fund_name": "基金一",
+                    "class_name": "A股",
+                    "target_percent": 0.4,
+                    "plan_unit": 4,
+                    "nav": 1.2,
+                    "nav_date": 1760000000000,
+                    "unit_value": 1,
+                },
+                {
+                    "fund_code": "000002",
+                    "fund_name": "基金二",
+                    "class_name": "债券",
+                    "target_percent": 0.2,
+                    "plan_unit": 2,
+                    "nav": 2,
+                    "nav_date": 1760000000000,
+                    "unit_value": None,
+                },
+            ],
+            "history": [
+                {
+                    "adjustment_id": 9,
+                    "fund_code": "000001",
+                    "fund_name": "基金一",
+                    "order_code": "022",
+                    "variety": "基金一",
+                    "nav": 1.2,
+                    "nav_date": 1760000000000,
+                    "trade_unit": 1,
+                    "adjust_txn_date": 1760000000000,
+                },
+                {
+                    "adjustment_id": 8,
+                    "fund_code": "000002",
+                    "fund_name": "基金二",
+                    "order_code": "024",
+                    "variety": "基金二",
+                    "nav": 2,
+                    "nav_date": 1750000000000,
+                    "trade_unit": -1,
+                    "adjust_txn_date": 1750000000000,
+                },
+            ],
+        }
+        tables = {"测试计划": "tbl-holding", "测试计划-买卖记录": "tbl-history"}
+        records = [
+            [{"record_id": "rec-1", "fields": {"基金代码": "000001"}}],
+            [
+                {
+                    "record_id": "rec-history",
+                    "fields": {"调仓ID": 9, "基金代码": "000001"},
+                }
+            ],
+        ]
+        with patch.object(self.client, "ensure_fields", return_value=(0, 0)), patch.object(
+            self.client, "list_records", side_effect=records
+        ), patch.object(self.client, "batch_create") as batch_create, patch.object(
+            self.client, "batch_update"
+        ) as batch_update:
+            result = self.client.sync_report(report, tables)
+
+        self.assertIn("持仓新增 1、更新 1", result)
+        self.assertIn("历史新增 1、跳过 1", result)
+        self.assertEqual(len(batch_create.call_args_list[0].args[1]), 1)
+        self.assertEqual(len(batch_create.call_args_list[1].args[1]), 1)
+        self.assertEqual(len(batch_update.call_args.args[1]), 1)
+
+    def test_wiki_resolution_logs_mask_tokens(self) -> None:
+        wiki_token = "wikcn-sensitive-full-token"
+        base_token = "bascn-sensitive-full-token"
+        config = QIEMAN.FeishuConfig("app", "secret", wiki_token, "wiki")
+        output = io.StringIO()
+        with patch.object(
+            QIEMAN.FeishuBitableClient,
+            "request",
+            return_value={
+                "data": {"node": {"obj_type": "bitable", "obj_token": base_token}}
+            },
+        ), redirect_stdout(output):
+            client = QIEMAN.FeishuBitableClient(config)
+
+        self.assertEqual(client.app_token, base_token)
+        self.assertNotIn(wiki_token, output.getvalue())
+        self.assertNotIn(base_token, output.getvalue())
+        self.assertIn("Wiki 节点类型 bitable", output.getvalue())
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qieman-sync"
 name: "且慢顾投计划同步"
-version: "1.0.1"
+version: "1.0.2"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-10-21T00:00:00+08:00"
+last_commit: "2026-10-22T00:00:00+08:00"
 template:
   - tag: "QiemanSync"
   - mise_languages: "python@3.12.11"
@@ -43,7 +43,7 @@ env_schema:
     label: "且慢计划"
     type: "string"
     required: false
-    default: "LONG_WIN:长赢指数150计划"
+    default: "LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划"
     description: "逗号分隔的 计划代码:显示名称；例如 LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划。"
   - key: "QIEMAN_HISTORY_LIMIT"
     label: "最近调仓批次数"

@@ -111,6 +111,14 @@ def format_update_date(timestamp_ms: Any) -> tuple[str, str]:
     return value.strftime("%Y-%m-%d"), f"{value.year}/{value.month}/{value.day} 20:00"
 
 
+def mask_token(value: str) -> str:
+    """隐藏飞书 Token 主体，仅保留少量首尾字符供排错。"""
+    token = str(value or "")
+    if len(token) <= 8:
+        return "****"
+    return f"{token[:4]}...{token[-4:]}"
+
+
 def _category(item: dict[str, Any]) -> str:
     values = item.get("category") or []
     key = str(values[0]) if isinstance(values, list) and values else ""
@@ -382,7 +390,9 @@ class FeishuBitableClient:
         self.app_token = config.app_token
         self.access_token = ""
         if config.token_type == "wiki":
+            log(f"飞书：正在解析 Wiki Token {mask_token(config.app_token)}")
             self.app_token = self._resolve_wiki_token(config.app_token)
+            log(f"飞书：Wiki Token 已解析为多维表格 {mask_token(self.app_token)}")
 
     def _tenant_token(self) -> str:
         response = requests.post(
@@ -453,6 +463,10 @@ class FeishuBitableClient:
             params={"token": wiki_token, "obj_type": "wiki"},
         )
         node = result.get("data", {}).get("node", {})
+        log(
+            "飞书：Wiki 节点类型 "
+            f"{node.get('obj_type') or '未知'}，对象 {mask_token(str(node.get('obj_token') or ''))}"
+        )
         if node.get("obj_type") != "bitable" or not node.get("obj_token"):
             raise RuntimeError("FEISHU_TABLE_TOKEN 对应的 Wiki 节点不是多维表格")
         return str(node["obj_token"])
@@ -485,9 +499,12 @@ class FeishuBitableClient:
         return str(table_id)
 
     def ensure_table(self, name: str, tables: dict[str, str]) -> str:
-        if name not in tables:
-            log(f"飞书：创建数据表「{name}」")
-            tables[name] = self.create_table(name)
+        if name in tables:
+            log(f"飞书：找到数据表「{name}」（{tables[name]}）")
+            return tables[name]
+        log(f"飞书：创建数据表「{name}」")
+        tables[name] = self.create_table(name)
+        log(f"飞书：已创建数据表「{name}」（{tables[name]}）")
         return tables[name]
 
     def list_fields(self, table_id: str) -> dict[str, dict[str, Any]]:
@@ -500,8 +517,12 @@ class FeishuBitableClient:
             if isinstance(item, dict) and item.get("field_name")
         }
 
-    def ensure_fields(self, table_id: str, expected: list[dict[str, Any]]) -> None:
+    def ensure_fields(
+        self, table_id: str, expected: list[dict[str, Any]]
+    ) -> tuple[int, int]:
         existing = self.list_fields(table_id)
+        added = 0
+        updated = 0
         for field in expected:
             name = str(field["name"])
             payload = {
@@ -516,6 +537,7 @@ class FeishuBitableClient:
                     f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields",
                     data=payload,
                 )
+                added += 1
                 continue
             current_description = current.get("description") or {}
             current_text = (
@@ -527,11 +549,15 @@ class FeishuBitableClient:
                 field_id = current.get("field_id")
                 if not field_id:
                     raise RuntimeError(f"飞书字段 {name} 缺少 field_id")
+                update_payload = dict(payload)
+                update_payload["type"] = int(current.get("type") or field["type"])
                 self.request(
                     "PUT",
                     f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields/{field_id}",
-                    data=payload,
+                    data=update_payload,
                 )
+                updated += 1
+        return added, updated
 
     def list_records(self, table_id: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
@@ -647,23 +673,41 @@ def sync_feishu(report: dict[str, Any], disabled: bool) -> str:
     if config is None:
         return "未配置，已跳过"
     client = FeishuBitableClient(config)
+    log("飞书：正在获取多维表格中的数据表列表")
     tables = {
         str(item.get("name")): str(item.get("table_id"))
         for item in client.list_tables()
         if item.get("name") and item.get("table_id")
     }
+    log(f"飞书：共找到 {len(tables)} 个数据表：{list(tables)}")
 
+    log("飞书：[1/2] 同步「每日指数估值」")
     index_table = client.ensure_table("每日指数估值", tables)
-    client.ensure_fields(index_table, INDEX_FIELDS)
+    index_added_fields, index_updated_fields = client.ensure_fields(
+        index_table, INDEX_FIELDS
+    )
+    log(
+        "飞书：「每日指数估值」字段已就绪（"
+        f"新增 {index_added_fields}，更新说明 {index_updated_fields}）"
+    )
     index_added, index_updated = client.upsert_rows(
         index_table, index_rows(report), "指数代码"
     )
+    log(f"飞书：「每日指数估值」同步完成，新增 {index_added}，更新 {index_updated}")
 
+    log("飞书：[2/2] 同步「每日债券收益」")
     bond_table = client.ensure_table("每日债券收益", tables)
-    client.ensure_fields(bond_table, BOND_FIELDS)
+    bond_added_fields, bond_updated_fields = client.ensure_fields(
+        bond_table, BOND_FIELDS
+    )
+    log(
+        "飞书：「每日债券收益」字段已就绪（"
+        f"新增 {bond_added_fields}，更新说明 {bond_updated_fields}）"
+    )
     bond_added, bond_updated = client.upsert_rows(
         bond_table, bond_rows(report), "债券代码"
     )
+    log(f"飞书：「每日债券收益」同步完成，新增 {bond_added}，更新 {bond_updated}")
     return (
         f"指数新增 {index_added}、更新 {index_updated}；"
         f"债券新增 {bond_added}、更新 {bond_updated}"

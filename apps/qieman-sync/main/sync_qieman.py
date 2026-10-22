@@ -25,36 +25,37 @@ import requests
 
 QIEMAN_BASE_URL = "https://qieman.com"
 DEFAULT_BAIHU_NOTIFY_URL = "http://localhost:8052/api/v1/notify/send"
-DEFAULT_PLANS = OrderedDict((("LONG_WIN", "长赢指数150计划"),))
+DEFAULT_PLANS = OrderedDict(
+    (
+        ("LONG_WIN", "长赢指数150计划"),
+        ("LONG_WIN_S", "长赢指数S计划"),
+    )
+)
 ORDER_CODE_MAP = {"022": "买入", "024": "卖出"}
 TEXT_FIELD = 1
 NUMBER_FIELD = 2
 DATE_FIELD = 5
-HOLDING_FIELDS = OrderedDict(
-    (
-        ("基金代码", TEXT_FIELD),
-        ("基金名称", TEXT_FIELD),
-        ("资产类别", TEXT_FIELD),
-        ("目标占比", NUMBER_FIELD),
-        ("计划份数", NUMBER_FIELD),
-        ("单位净值", NUMBER_FIELD),
-        ("净值日期", DATE_FIELD),
-        ("主理人持有单价", NUMBER_FIELD),
-    )
-)
-HISTORY_FIELDS = OrderedDict(
-    (
-        ("调仓ID", NUMBER_FIELD),
-        ("基金代码", TEXT_FIELD),
-        ("基金名称", TEXT_FIELD),
-        ("操作类型", TEXT_FIELD),
-        ("品种", TEXT_FIELD),
-        ("成交净值", NUMBER_FIELD),
-        ("净值日期", DATE_FIELD),
-        ("交易份数", NUMBER_FIELD),
-        ("交易日期", DATE_FIELD),
-    )
-)
+HOLDING_FIELDS = [
+    {"name": "基金代码", "type": TEXT_FIELD, "desc": "基金或投资标的代码，作为持仓同步的唯一键。"},
+    {"name": "基金名称", "type": TEXT_FIELD, "desc": "基金或投资标的名称。"},
+    {"name": "资产类别", "type": TEXT_FIELD, "desc": "且慢计划中的资产分类。"},
+    {"name": "目标占比", "type": NUMBER_FIELD, "desc": "该标的在计划中的目标权重，原始值为 0–1 小数。"},
+    {"name": "计划份数", "type": NUMBER_FIELD, "desc": "长赢计划分配给该标的计划份数。"},
+    {"name": "单位净值", "type": NUMBER_FIELD, "desc": "且慢返回的最新单位净值。"},
+    {"name": "净值日期", "type": DATE_FIELD, "desc": "单位净值对应的日期。"},
+    {"name": "主理人持有单价", "type": NUMBER_FIELD, "desc": "且慢公开计划中的主理人持有单价。"},
+]
+HISTORY_FIELDS = [
+    {"name": "调仓ID", "type": NUMBER_FIELD, "desc": "且慢调仓批次 ID，与基金代码组成历史记录唯一键。"},
+    {"name": "基金代码", "type": TEXT_FIELD, "desc": "本条调仓明细对应的基金或投资标的代码。"},
+    {"name": "基金名称", "type": TEXT_FIELD, "desc": "本条调仓明细对应的基金名称。"},
+    {"name": "操作类型", "type": TEXT_FIELD, "desc": "买入、卖出或且慢返回的其他操作类型。"},
+    {"name": "品种", "type": TEXT_FIELD, "desc": "且慢调仓记录中的品种名称。"},
+    {"name": "成交净值", "type": NUMBER_FIELD, "desc": "本次买卖对应的成交净值。"},
+    {"name": "净值日期", "type": DATE_FIELD, "desc": "成交净值对应的日期。"},
+    {"name": "交易份数", "type": NUMBER_FIELD, "desc": "本次调仓的交易份数；正数为买入，负数为卖出。"},
+    {"name": "交易日期", "type": DATE_FIELD, "desc": "本次调仓实际发生的日期。"},
+]
 
 
 def log(message: str, *, error: bool = False) -> None:
@@ -121,6 +122,14 @@ def format_date(value: Any) -> str:
     if not timestamp:
         return "未知日期"
     return datetime.fromtimestamp(timestamp / 1000, tz=_timezone()).strftime("%Y-%m-%d")
+
+
+def mask_token(value: str) -> str:
+    """隐藏飞书 Token 主体，仅保留少量首尾字符供排错。"""
+    token = str(value or "")
+    if len(token) <= 8:
+        return "****"
+    return f"{token[:4]}...{token[-4:]}"
 
 
 class QiemanClient:
@@ -445,7 +454,9 @@ class FeishuBitableClient:
         self.app_token = config.app_token
         self.access_token = ""
         if config.token_type == "wiki":
+            log(f"飞书：正在解析 Wiki Token {mask_token(config.app_token)}")
             self.app_token = self._resolve_wiki_token(config.app_token)
+            log(f"飞书：Wiki Token 已解析为多维表格 {mask_token(self.app_token)}")
 
     def _tenant_token(self) -> str:
         response = requests.post(
@@ -509,6 +520,10 @@ class FeishuBitableClient:
             params={"token": wiki_token, "obj_type": "wiki"},
         )
         node = result.get("data", {}).get("node", {})
+        log(
+            "飞书：Wiki 节点类型 "
+            f"{node.get('obj_type') or '未知'}，对象 {mask_token(str(node.get('obj_token') or ''))}"
+        )
         if node.get("obj_type") != "bitable" or not node.get("obj_token"):
             raise RuntimeError("FEISHU_TABLE_TOKEN 对应的 Wiki 节点不是多维表格")
         return str(node["obj_token"])
@@ -541,32 +556,67 @@ class FeishuBitableClient:
         return str(table_id)
 
     def ensure_table(self, name: str, tables: dict[str, str]) -> str:
-        if name not in tables:
-            log(f"飞书：创建数据表「{name}」")
-            tables[name] = self.create_table(name)
+        if name in tables:
+            log(f"飞书：找到数据表「{name}」（{tables[name]}）")
+            return tables[name]
+        log(f"飞书：创建数据表「{name}」")
+        tables[name] = self.create_table(name)
+        log(f"飞书：已创建数据表「{name}」（{tables[name]}）")
         return tables[name]
 
-    def list_fields(self, table_id: str) -> set[str]:
+    def list_fields(self, table_id: str) -> dict[str, dict[str, Any]]:
         result = self.request(
             "GET", f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields"
         )
         return {
-            str(item.get("field_name"))
+            str(item["field_name"]): item
             for item in result.get("data", {}).get("items", [])
             if isinstance(item, dict) and item.get("field_name")
         }
 
-    def ensure_fields(self, table_id: str, expected: OrderedDict[str, int]) -> None:
+    def ensure_fields(
+        self, table_id: str, expected: list[dict[str, Any]]
+    ) -> tuple[int, int]:
         existing = self.list_fields(table_id)
-        for field_name, field_type in expected.items():
-            if field_name in existing:
+        added = 0
+        updated = 0
+        for field in expected:
+            name = str(field["name"])
+            description = str(field["desc"])
+            payload = {
+                "field_name": name,
+                "type": int(field["type"]),
+                "description": {"disable_sync": False, "text": description},
+            }
+            current = existing.get(name)
+            if current is None:
+                self.request(
+                    "POST",
+                    f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields",
+                    data=payload,
+                )
+                added += 1
                 continue
-            self.request(
-                "POST",
-                f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields",
-                data={"field_name": field_name, "type": field_type},
+            current_description = current.get("description") or {}
+            current_text = (
+                current_description.get("text", "")
+                if isinstance(current_description, dict)
+                else str(current_description)
             )
-            existing.add(field_name)
+            if current_text == description:
+                continue
+            field_id = current.get("field_id")
+            if not field_id:
+                raise RuntimeError(f"飞书字段 {name} 缺少 field_id")
+            update_payload = dict(payload)
+            update_payload["type"] = int(current.get("type") or field["type"])
+            self.request(
+                "PUT",
+                f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields/{field_id}",
+                data=update_payload,
+            )
+            updated += 1
+        return added, updated
 
     def list_records(self, table_id: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
@@ -610,13 +660,25 @@ class FeishuBitableClient:
         return len(records)
 
     def sync_report(self, report: dict[str, Any], tables: dict[str, str]) -> str:
+        log(f"飞书：开始同步计划「{report['name']}」（{report['code']}）")
+        log(f"飞书：[1/2] 同步持仓组合 → 「{report['name']}」")
         holding_table = self.ensure_table(report["name"], tables)
-        self.ensure_fields(holding_table, HOLDING_FIELDS)
+        holding_added_fields, holding_updated_fields = self.ensure_fields(
+            holding_table, HOLDING_FIELDS
+        )
+        log(
+            "飞书：持仓表字段已就绪（"
+            f"新增 {holding_added_fields}，更新说明 {holding_updated_fields}）"
+        )
         existing_holdings = {
             str(record.get("fields", {}).get("基金代码")): str(record.get("record_id"))
             for record in self.list_records(holding_table)
             if record.get("record_id") and record.get("fields", {}).get("基金代码")
         }
+        log(
+            f"飞书：持仓目标 {len(report['all_funds'])} 条，"
+            f"已有 {len(existing_holdings)} 条"
+        )
         creates: list[dict[str, Any]] = []
         updates: list[dict[str, Any]] = []
         for fund in report["all_funds"]:
@@ -637,10 +699,18 @@ class FeishuBitableClient:
                 creates.append({"fields": fields})
         self.batch_create(holding_table, creates)
         self.batch_update(holding_table, updates)
+        log(f"飞书：持仓同步完成，新增 {len(creates)}，更新 {len(updates)}")
 
         history_name = f"{report['name']}-买卖记录"
+        log(f"飞书：[2/2] 增量同步买卖历史 → 「{history_name}」")
         history_table = self.ensure_table(history_name, tables)
-        self.ensure_fields(history_table, HISTORY_FIELDS)
+        history_added_fields, history_updated_fields = self.ensure_fields(
+            history_table, HISTORY_FIELDS
+        )
+        log(
+            "飞书：历史表字段已就绪（"
+            f"新增 {history_added_fields}，更新说明 {history_updated_fields}）"
+        )
         existing_history = {
             (int(_number(fields.get("调仓ID"))), str(fields.get("基金代码")))
             for record in self.list_records(history_table)
@@ -648,10 +718,16 @@ class FeishuBitableClient:
             and fields.get("调仓ID") is not None
             and fields.get("基金代码")
         }
+        log(
+            f"飞书：历史表已有 {len(existing_history)} 条，"
+            f"且慢返回 {len(report['history'])} 条"
+        )
         history_creates: list[dict[str, Any]] = []
+        skipped_history = 0
         for item in report["history"]:
             key = (item["adjustment_id"], item["fund_code"])
             if key in existing_history:
+                skipped_history += 1
                 continue
             history_creates.append(
                 {
@@ -670,10 +746,15 @@ class FeishuBitableClient:
                     }
                 }
             )
+            existing_history.add(key)
         self.batch_create(history_table, history_creates)
+        log(
+            f"飞书：历史同步完成，新增 {len(history_creates)}，"
+            f"跳过 {skipped_history}（已有）"
+        )
         return (
             f"{report['name']} 持仓新增 {len(creates)}、更新 {len(updates)}，"
-            f"历史新增 {len(history_creates)}"
+            f"历史新增 {len(history_creates)}、跳过 {skipped_history}"
         )
 
 
@@ -684,11 +765,13 @@ def sync_feishu(reports: list[dict[str, Any]], disabled: bool) -> str:
     if config is None:
         return "未配置，已跳过"
     client = FeishuBitableClient(config)
+    log("飞书：正在获取多维表格中的数据表列表")
     tables = {
         str(item.get("name")): str(item.get("table_id"))
         for item in client.list_tables()
         if item.get("name") and item.get("table_id")
     }
+    log(f"飞书：共找到 {len(tables)} 个数据表：{list(tables)}")
     results = [client.sync_report(report, tables) for report in reports]
     return "；".join(results)
 
