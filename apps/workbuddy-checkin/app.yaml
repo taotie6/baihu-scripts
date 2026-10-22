@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "workbuddy-checkin"
 name: "WorkBuddy 每日积分"
-version: "1.0.0"
+version: "1.1.0"
 author: "taotie6"
 category: "福利签到"
-last_commit: "2026-10-19T00:00:00+08:00"
+last_commit: "2026-10-20T00:00:00+08:00"
 template:
   - tag: "WorkBuddyCheckin"
   - mise_languages: "python@3.12.11"
@@ -17,7 +17,7 @@ build_opts:
   overwrite_env: false
   overwrite_task: true
 schedule_opts:
-  schedule: "0 20 8 * * *"
+  schedule: "0 35 8 * * *"
   random_range: 300
   timeout: 5
   retry_count: 1
@@ -27,6 +27,7 @@ sources:
     source_type: "git"
     source_url: "https://github.com/taotie6/baihu-scripts.git"
     branch: "main"
+    path: "apps/workbuddy-checkin/main"
     target_path: "repo"
 setup:
   check: >-
@@ -44,7 +45,7 @@ env_schema:
     type: "secret"
     required: false
     description: "粘贴一个完整 .info JSON 对象；多账号请填写由多个完整对象组成的 JSON 数组。"
-    placeholder: '{"account":{"uid":"..."},"auth":{"accessToken":...,"expiresAt":...}}'
+    placeholder: '{"account":{"uid":"..."},"auth":{"accessToken":"$wbEncrypted:...","expiresAt":...}}'
   - key: "WORKBUDDY_AUTH_DIR"
     label: "登录态挂载目录"
     type: "string"
@@ -63,14 +64,14 @@ sync_rules:
       source: "repo"
       language: "{mise_languages}"
       command: "python checkin.py"
-      default_cron: "0 20 8 * * *"
+      default_cron: "0 35 8 * * *"
       enabled: true
 scenarios:
   - id: "standard"
     name: "每日领取"
-    description: "每天 08:20 执行，随机延迟最多 5 分钟。"
+    description: "每天 08:35 执行，随机延迟最多 5 分钟。"
     default: true
     task_presets:
       daily-checkin:
         enabled: true
-        cron: "0 20 8 * * *"
+        cron: "0 35 8 * * *"

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import inspect
 import json
@@ -51,8 +52,52 @@ def _wb_aad(framing: str, key_id: str, suite: int) -> bytes:
     )
 
 
+def _decrypt_prefixed_field(value: str) -> str:
+    """解密 5.6.0+ 使用的 ``$wbEncrypted:<base64>`` 字符串信封。
+
+    已观察到的字符串信封是 ``nonce(12B) + ciphertext + tag(16B)``。部分构建
+    会把相同三段包装成 JSON，因此同时兼容两种编码，但只接受当前构建密钥。
+    """
+    encoded = value.removeprefix("$wbEncrypted:")
+    try:
+        packed = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, TypeError, ValueError) as error:
+        raise ValueError("加密登录态不是合法 Base64") from error
+
+    key_id = _WB_KEY_ID
+    try:
+        envelope = json.loads(packed)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        envelope = None
+
+    if isinstance(envelope, dict):
+        try:
+            key_id = str(envelope.get("keyId") or _WB_KEY_ID)
+            nonce = base64.b64decode(envelope["nonce"], validate=True)
+            ciphertext = base64.b64decode(envelope["ciphertext"], validate=True)
+            tag_value = envelope.get("tag", envelope.get("authTag"))
+            auth_tag = base64.b64decode(tag_value, validate=True)
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("加密登录态 JSON 信封格式无效") from error
+    else:
+        if len(packed) < 12 + 16 + 1:
+            raise ValueError("加密登录态二进制信封长度不足")
+        nonce, ciphertext, auth_tag = packed[:12], packed[12:-16], packed[-16:]
+
+    if key_id != _WB_KEY_ID:
+        raise ValueError(f"密钥不匹配（envelope keyId={key_id}），WorkBuddy 版本可能已更新")
+    cipher = AES.new(_WB_KEY, AES.MODE_GCM, nonce=nonce, mac_len=16)
+    cipher.update(b"WB-AAD\x00" + b"\x01" + key_id.encode("ascii") + nonce)
+    try:
+        return cipher.decrypt_and_verify(ciphertext, auth_tag).decode("utf-8")
+    except (UnicodeDecodeError, ValueError) as error:
+        raise ValueError("登录态解密认证失败，请重新登录 WorkBuddy") from error
+
+
 def open_wb_field(value: Any) -> Any:
     """解密 $wbEncrypted 字段封装；明文值原样返回。"""
+    if isinstance(value, str) and value.startswith("$wbEncrypted:"):
+        return _decrypt_prefixed_field(value)
     if not isinstance(value, dict) or value.get("$wbEncrypted") != 1:
         return value
     if value.get("scheme") not in (None, "sym-v1"):

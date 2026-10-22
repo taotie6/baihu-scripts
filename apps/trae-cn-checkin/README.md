@@ -17,7 +17,7 @@ SOLO CN 每日签到，支持：
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/trae-cn-checkin/app.yaml
 ```
 
-默认每天 `08:25` 执行，Cron 为六位表达式 `0 25 8 * * *`，并有最多
+默认每天 `08:30` 执行，Cron 为六位表达式 `0 30 8 * * *`，并有最多
 5 分钟的随机延迟。
 
 ## 导入登录态
@@ -50,6 +50,9 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/trae-cn-checki
 
 单账号无需包装，直接粘贴完整 `storage.json` 即可。登录态过期后，需要重新
 启动 Trae 刷新文件并再次导入。
+
+也可在仓库根目录运行 `python tools/export_baihu_credentials.py trae`，自动扫描两种
+客户端、校验加密登录态并整理 `TRAE_CN_SESSIONS` 和设备 ID。
 
 ## 配置设备 ID
 

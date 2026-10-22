@@ -13,3 +13,5 @@ baihu
 **/.iios-state.json.tmp
 **/auths.json
 **/.auths.json.tmp
+baihu-credentials.json
+.baihu-credentials.json.tmp

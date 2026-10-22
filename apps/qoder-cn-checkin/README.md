@@ -11,7 +11,7 @@
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qoder-cn-checkin/app.yaml
 ```
 
-默认每天 `08:30` 执行，Cron 为六位表达式 `0 30 8 * * *`，并有最多
+默认每天 `10:05` 执行，Cron 为六位表达式 `0 5 10 * * *`，并有最多
 5 分钟的随机延迟。
 
 ## 准备凭证
@@ -25,7 +25,11 @@ python -m pip install -r main/requirements.txt
 python main/checkin.py export-auth
 ```
 
-脚本会在 `main` 目录生成权限受限的 `auths.json`，且不会把 Token 打印到终端。
+也可在仓库根目录运行 `python tools/export_baihu_credentials.py qoder`，生成统一的
+白虎变量包。
+
+脚本会在 `main` 目录生成权限受限的 `auths.json`，只包含 `token`、到期时间和
+用户标识，不会导出 `refreshToken`，也不会把 Token 打印到终端。
 将该文件的完整内容保存到白虎机密变量 `QODER_CN_AUTHS`，确认面板配置成功后，
 妥善删除本地导出文件。登录态失效时需要重新导出。
 
@@ -44,7 +48,6 @@ python main/checkin.py export-auth
     "label": "账号1",
     "auth": {
       "token": "...",
-      "refreshToken": "...",
       "expiresAt": "...",
       "user": {"name": "...", "id": "..."}
     }

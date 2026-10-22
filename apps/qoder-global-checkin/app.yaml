@@ -27,6 +27,7 @@ sources:
     source_type: "git"
     source_url: "https://github.com/taotie6/baihu-scripts.git"
     branch: "main"
+    path: "apps/qoder-global-checkin/main"
     target_path: "repo"
 setup:
   check: >-

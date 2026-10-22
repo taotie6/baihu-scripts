@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qoder-cn-checkin"
 name: "Qoder CN 用量与签到"
-version: "1.0.0"
+version: "1.1.0"
 author: "taotie6"
 category: "福利签到"
-last_commit: "2026-10-19T00:00:00+08:00"
+last_commit: "2026-10-20T00:00:00+08:00"
 template:
   - tag: "QoderCnCheckin"
   - mise_languages: "python@3.12.11"
@@ -17,7 +17,7 @@ build_opts:
   overwrite_env: false
   overwrite_task: true
 schedule_opts:
-  schedule: "0 30 8 * * *"
+  schedule: "0 5 10 * * *"
   random_range: 300
   timeout: 5
   retry_count: 1
@@ -27,6 +27,7 @@ sources:
     source_type: "git"
     source_url: "https://github.com/taotie6/baihu-scripts.git"
     branch: "main"
+    path: "apps/qoder-cn-checkin/main"
     target_path: "repo"
 setup:
   check: >-
@@ -43,7 +44,7 @@ env_schema:
     label: "Qoder 登录凭证 JSON"
     type: "secret"
     required: false
-    description: "解密后的 auth JSON 对象或对象数组；也支持带 label/auth 的多账号包装格式。"
+    description: "仅需 token、expiresAt、user；不要上传 refreshToken。支持对象数组及 label/auth 包装格式。"
     placeholder: '{"token":"...","expiresAt":"...","user":{"name":"..."}}'
   - key: "QODER_CN_AUTH_FILE"
     label: "凭证文件路径"
@@ -83,14 +84,14 @@ sync_rules:
       source: "repo"
       language: "{mise_languages}"
       command: "python checkin.py usage"
-      default_cron: "0 30 8 * * *"
+      default_cron: "0 5 10 * * *"
       enabled: true
 scenarios:
   - id: "standard"
     name: "每日汇总与签到"
-    description: "每天 08:30 汇总用量并领取权益，随机延迟最多 5 分钟。"
+    description: "每天 10:05 汇总用量并领取权益，随机延迟最多 5 分钟。"
     default: true
     task_presets:
       daily-usage-and-checkin:
         enabled: true
-        cron: "0 30 8 * * *"
+        cron: "0 5 10 * * *"

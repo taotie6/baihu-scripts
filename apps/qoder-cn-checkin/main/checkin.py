@@ -119,6 +119,18 @@ def load_client_auth() -> dict[str, Any]:
     return auth
 
 
+def panel_auth(auth: dict[str, Any]) -> dict[str, Any]:
+    """仅保留白虎调用 API 所需字段，绝不导出 refreshToken。"""
+    token = auth.get("token")
+    if not isinstance(token, str) or not token:
+        raise ValueError("客户端登录仓中没有 token")
+    result: dict[str, Any] = {"token": token}
+    for key in ("expiresAt", "user"):
+        if auth.get(key) is not None:
+            result[key] = auth[key]
+    return result
+
+
 def _read_json_file(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -173,7 +185,7 @@ def load_auths(args: argparse.Namespace) -> list[tuple[str, dict[str, Any]]]:
 
 def export_client_auth(path: Path) -> None:
     """显式导出 Windows 客户端凭证，供复制到白虎机密变量。"""
-    auth = load_client_auth()
+    auth = panel_auth(load_client_auth())
     path = path.expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
@@ -296,7 +308,6 @@ def do_claim(session: requests.Session, dry_run: bool) -> int:
         for campaign in campaigns
         if isinstance(campaign, dict)
         and campaign.get("claimStatus") == "CLAIMABLE"
-        and campaign.get("actionType") == "CLAIM_BENEFIT"
     ]
     if not targets:
         log("没有 CLAIMABLE 的活动，无需签到")

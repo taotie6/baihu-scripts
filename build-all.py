@@ -47,6 +47,13 @@ def parse_timestamp(value: Any, source: Path) -> datetime:
     return parsed
 
 
+def normalize_git_url(value: Any) -> str:
+    url = str(value or "").strip().rstrip("/")
+    if url.endswith(".git"):
+        url = url[:-4]
+    return url
+
+
 def load_manifest(path: Path, owner: str, repo: str, branch: str) -> tuple[dict[str, Any], datetime]:
     raw = path.read_text(encoding="utf-8")
     document = yaml.safe_load(raw)
@@ -61,12 +68,33 @@ def load_manifest(path: Path, owner: str, repo: str, branch: str) -> tuple[dict[
     if document["id"] != path.parent.name:
         raise ValueError(f"{path}: id 必须与应用目录名一致")
 
+    sources = document.get("sources") or []
     tasks = document.get("tasks") or (document.get("sync_rules") or {}).get("tasks") or []
     env_schema = document.get("env_schema") or []
     scenarios = document.get("scenarios") or []
-    for field, value in (("tasks", tasks), ("env_schema", env_schema), ("scenarios", scenarios)):
+    for field, value in (
+        ("sources", sources),
+        ("tasks", tasks),
+        ("env_schema", env_schema),
+        ("scenarios", scenarios),
+    ):
         if not isinstance(value, list):
             raise ValueError(f"{path}: {field} 必须是数组")
+
+    own_repo_url = f"https://github.com/{owner}/{repo}"
+    expected_source_path = f"apps/{document['id']}/main"
+    for index, source in enumerate(sources):
+        if not isinstance(source, dict):
+            raise ValueError(f"{path}: sources[{index}] 必须是对象")
+        if (
+            source.get("source_type") == "git"
+            and normalize_git_url(source.get("source_url")) == own_repo_url
+            and source.get("path") != expected_source_path
+        ):
+            raise ValueError(
+                f"{path}: 本仓库 Git source 必须设置 path: {expected_source_path}，"
+                "避免每个应用完整检出整个仓库"
+            )
 
     updated = parse_timestamp(document["last_commit"], path)
     metadata = {key: document[key] for key in INDEX_KEYS if document.get(key) is not None}
