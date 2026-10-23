@@ -73,6 +73,16 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-sync/ap
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuation/app.yaml
 ```
 
+## 且慢应用的白虎通知与机密变量
+
+`qieman-sync` 和 `qieman-valuation` 使用白虎任务自带的“通知配置”，
+不再需要脚本调用 Token、渠道 ID 或通知 URL。安装后请在对应任务中选择通知渠道，
+开启成功、失败、超时事件和尾部日志。
+
+飞书同步的 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 和 `FEISHU_TABLE_TOKEN` 都是
+白虎机密变量。从 `1.0.2` 更新到 `1.0.3` 时，应在应用配置页重新确认三个值，
+以覆盖白虎中可能保留的旧凭据。
+
 ## Windows 登录态一键整理
 
 Qoder CN、Trae CN / TRAE SOLO CN 和 WorkBuddy 均可从本机客户端的登录态生成

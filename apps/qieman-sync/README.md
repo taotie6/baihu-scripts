@@ -1,7 +1,7 @@
 # 且慢顾投计划同步
 
-白虎面板应用：读取且慢公开页面接口的顾投计划持仓与调仓记录，整理为摘要后
-通过白虎原生通知推送。飞书多维表格是可选输出，不配置飞书也能正常运行。
+白虎面板应用：读取且慢公开页面接口的顾投计划持仓与调仓记录，将摘要
+输出到任务日志，由白虎任务通知推送。飞书多维表格是可选输出。
 
 ## 安装
 
@@ -11,7 +11,7 @@
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-sync/app.yaml
 ```
 
-默认在工作日 `20:30` 执行，最多随机延迟 5 分钟。通知包含资产配置、前五持仓和
+默认在工作日 `20:30` 执行，最多随机延迟 5 分钟。日志摘要包含资产配置、前五持仓和
 最近 3 批调仓记录。
 
 ## 计划配置
@@ -28,26 +28,22 @@ LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划
 QIEMAN_PLANS=LONG_WIN:长赢指数150计划
 ```
 
-- `QIEMAN_HISTORY_LIMIT`：通知中保留的最近调仓批次数，默认 `3`。
-- `QIEMAN_NOTIFY_MAX_LENGTH`：通知最大字符数，默认 `3500`。
+- `QIEMAN_HISTORY_LIMIT`：任务日志中保留的最近调仓批次数，默认 `3`。
 
 ## 白虎通知配置
 
-脚本主动推送需要配置：
+脚本不再调用白虎通知 HTTP API，也不需要 `BHPKG_NOTIFY_*`。打开白虎生成的
+“且慢顾投计划同步”任务，在“通知配置”中：
 
-- `BHPKG_NOTIFY_TOKEN`：在白虎“消息推送 → 脚本调用说明”中复制。
-- `BHPKG_NOTIFY_CHANNEL`：在白虎“消息推送 → 渠道列表”中复制渠道 ID。
-- `BHPKG_NOTIFY_URL`：默认 `http://localhost:8052/api/v1/notify/send`，通常无需修改。
-
-任务页面的“通知配置”用于白虎自身的任务事件通知，与脚本主动发送整理后的内容是
-两套机制；仅绑定任务通知不会自动注入上述变量。如果日志提示“未配置白虎主动推送
-参数”，请在应用环境变量中补齐 Token 和渠道 ID。
+1. 选择已创建的通知渠道。
+2. 开启成功、失败和超时通知。
+3. 开启携带尾部日志，让通知包含持仓、调仓与飞书同步摘要。
 
 ## 可选飞书同步
 
 同时配置以下三个变量才会启用飞书写入；全部留空时自动跳过：
 
-- `FEISHU_APP_ID`
+- `FEISHU_APP_ID`（机密变量）
 - `FEISHU_APP_SECRET`（机密变量）
 - `FEISHU_TABLE_TOKEN`（机密变量）
 
@@ -90,6 +86,10 @@ FEISHU_TOKEN_TYPE=wiki
 `FEISHU_APP_ID` 和 `FEISHU_APP_SECRET` 从同一个飞书自建应用复制，Secret 没有填成
 Verification Token、Encrypt Key 或其他凭据。该错误与 `FEISHU_TABLE_TOKEN` 无关。
 
+`1.0.3` 起三个凭据均由白虎机密变量注入，应用更新时会覆盖旧值。从旧版更新时，
+请在应用配置页重新确认三个值后再应用更新。对于白虎历史上已合并成 `old&new` 的同名值，
+脚本会优先尝试新值并有界回退，日志不会输出凭据原文。
+
 飞书应用需要多维表格读写权限和知识库节点读取权限（仅 Wiki Token 模式），并需要被添加为目标多维表格的协作者。
 
 ### 数据表与增量规则
@@ -126,5 +126,5 @@ Verification Token、Encrypt Key 或其他凭据。该错误与 `FEISHU_TABLE_TO
 python apps/qieman-sync/main/sync_qieman.py --no-notify --no-feishu
 ```
 
-加 `--json` 可额外输出完整的整理后数据。且慢接口属于公开页面接口，若上游接口
+其中 `--no-notify` 仅为旧版兼容参数，已不产生效果。加 `--json` 可额外输出完整的整理后数据。且慢接口属于公开页面接口，若上游接口
 结构或访问策略变化，任务会以非零状态退出并在日志中给出错误。

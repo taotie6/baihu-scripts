@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
@@ -70,7 +71,7 @@ class OrganiseValuationTest(unittest.TestCase):
         self.assertEqual(report["bonds"][0]["profit_rate"], 0.025)
 
     def test_renders_summary_and_percentages(self) -> None:
-        content = VALUATION.render_notification(
+        content = VALUATION.render_task_summary(
             VALUATION.organise_valuation(self.data), 5, "未配置，已跳过"
         )
         self.assertIn("指数 2 个：低估 1 / 适中 0 / 高估 1", content)
@@ -108,37 +109,25 @@ class FeishuConfigTest(unittest.TestCase):
         self.assertEqual(config.app_token, "token")
         self.assertEqual(config.token_type, "bitable")
 
-
-class BaihuNotificationTest(unittest.TestCase):
-    def test_posts_notification_to_baihu_api(self) -> None:
+    def test_baihu_joined_secrets_prefer_the_latest_value(self) -> None:
         values = {
-            "BHPKG_NOTIFY_TOKEN": "notify-secret",
-            "BHPKG_NOTIFY_CHANNEL": "channel-1",
+            "FEISHU_APP_ID": "old-app&new-app",
+            "FEISHU_APP_SECRET": "old-secret&old-secret&new-secret",
+            "FEISHU_TABLE_TOKEN": "old-token&new-token",
         }
-        with patch.dict(os.environ, values, clear=True), patch.object(
-            VALUATION.requests, "post"
-        ) as post:
-            post.return_value.json.return_value = {"code": 200, "msg": "success"}
-            self.assertTrue(VALUATION.notify_baihu("测试内容"))
+        with patch.dict(os.environ, values, clear=True):
+            config = VALUATION.FeishuConfig.from_env()
+        assert config
+        self.assertEqual(config.app_id, "new-app")
+        self.assertEqual(config.app_secret, "new-secret")
+        self.assertEqual(config.app_token, "new-token")
+        self.assertEqual(config.app_secret_candidates, ("new-secret", "old-secret"))
 
-        post.assert_called_once_with(
-            VALUATION.DEFAULT_BAIHU_NOTIFY_URL,
-            headers={"notify-token": "notify-secret"},
-            json={
-                "channel_id": "channel-1",
-                "title": "且慢每日估值",
-                "content": "测试内容",
-                "options": {"format": "markdown"},
-            },
-            timeout=30,
-        )
 
-    def test_skips_notification_when_script_credentials_are_missing(self) -> None:
-        with patch.dict(os.environ, {}, clear=True), patch.object(
-            VALUATION.requests, "post"
-        ) as post:
-            self.assertFalse(VALUATION.notify_baihu("测试内容"))
-        post.assert_not_called()
+class BaihuTaskNotificationTest(unittest.TestCase):
+    def test_script_has_no_direct_baihu_notification_client(self) -> None:
+        self.assertFalse(hasattr(VALUATION, "notify_baihu"))
+        self.assertFalse(hasattr(VALUATION, "DEFAULT_BAIHU_NOTIFY_URL"))
 
 
 class FeishuClientErrorTest(unittest.TestCase):
@@ -155,6 +144,75 @@ class FeishuClientErrorTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "同一个飞书自建应用") as context:
                 client._tenant_token()
         self.assertIn("FEISHU_TABLE_TOKEN 无关", str(context.exception))
+
+    def test_tries_credential_candidates_without_leaking_them(self) -> None:
+        config = VALUATION.FeishuConfig(
+            "new-app",
+            "new-secret",
+            "base-token",
+            "bitable",
+            app_id_candidates=("new-app", "old-app"),
+            app_secret_candidates=("new-secret", "old-secret"),
+        )
+        client = VALUATION.FeishuBitableClient(config)
+        responses = []
+        for payload in (
+            {"code": 10003, "msg": "app secret invalid"},
+            {"code": 0, "tenant_access_token": "tenant-token"},
+        ):
+            response = unittest.mock.MagicMock()
+            response.json.return_value = payload
+            responses.append(response)
+        with patch.object(VALUATION.requests, "post", side_effect=responses) as post:
+            self.assertEqual(client._tenant_token(), "tenant-token")
+        self.assertEqual(post.call_count, 2)
+
+    def test_all_failed_candidates_are_redacted_from_error(self) -> None:
+        secrets = ("new-sensitive-secret", "old-sensitive-secret")
+        config = VALUATION.FeishuConfig(
+            "app", secrets[0], "base-token", "bitable", app_secret_candidates=secrets
+        )
+        client = VALUATION.FeishuBitableClient(config)
+        response = unittest.mock.MagicMock()
+        response.json.return_value = {
+            "code": 10003,
+            "msg": f"invalid {secrets[0]}",
+        }
+        with patch.object(VALUATION.requests, "post", return_value=response):
+            with self.assertRaises(RuntimeError) as context:
+                client._tenant_token()
+        message = str(context.exception)
+        self.assertNotIn(secrets[0], message)
+        self.assertNotIn(secrets[1], message)
+
+    def test_tries_joined_table_token_candidates(self) -> None:
+        config = VALUATION.FeishuConfig(
+            "app",
+            "secret",
+            "new-token",
+            "bitable",
+            app_token_candidates=("new-token", "old-token"),
+        )
+        client = VALUATION.FeishuBitableClient(config)
+        with patch.object(
+            client,
+            "_list_tables",
+            side_effect=[RuntimeError("invalid new-token"), []],
+        ) as list_tables:
+            self.assertEqual(client.list_tables(), [])
+        self.assertEqual(list_tables.call_count, 2)
+        self.assertEqual(client.app_token, "old-token")
+
+
+class MainExitStatusTest(unittest.TestCase):
+    def test_returns_nonzero_when_qieman_fetch_fails(self) -> None:
+        args = SimpleNamespace(limit=5, no_feishu=True, no_notify=False, json=False)
+        with patch.object(VALUATION, "parse_args", return_value=args), patch.object(
+            VALUATION.QiemanValuationClient,
+            "fetch",
+            side_effect=RuntimeError("上游失败"),
+        ):
+            self.assertEqual(VALUATION.main(), 1)
 
 
 class FeishuSyncTest(unittest.TestCase):

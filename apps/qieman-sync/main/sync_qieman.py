@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """且慢顾投计划同步（白虎面板版）。
 
-默认抓取并整理计划持仓与调仓记录，通过白虎原生通知推送；配置完整的
-FEISHU_* 环境变量后，额外同步到飞书多维表格。
+默认抓取并整理计划持仓与调仓记录；配置完整的 FEISHU_* 机密变量后，
+额外同步到飞书多维表格。执行结果由白虎任务通知统一推送。
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import requests
 
 
 QIEMAN_BASE_URL = "https://qieman.com"
-DEFAULT_BAIHU_NOTIFY_URL = "http://localhost:8052/api/v1/notify/send"
+MAX_ENV_CANDIDATES = 4
 DEFAULT_PLANS = OrderedDict(
     (
         ("LONG_WIN", "长赢指数150计划"),
@@ -350,7 +350,7 @@ def render_plan(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def render_notification(
+def render_task_summary(
     reports: list[dict[str, Any]], feishu_status: str, failures: list[str] | None = None
 ) -> str:
     content = "\n\n".join(render_plan(report) for report in reports)
@@ -358,60 +358,19 @@ def render_notification(
         content += f"\n\n飞书：{feishu_status}"
     if failures:
         content += "\n\n异常：" + "；".join(failures)
-    limit = positive_int(
-        os.environ.get("QIEMAN_NOTIFY_MAX_LENGTH"), default=3500, maximum=10000
-    )
-    if len(content) > limit:
-        content = content[: max(1, limit - 8)].rstrip() + "\n…内容已截断"
     return content
 
 
-def notify_baihu(content: str) -> bool:
-    """通过白虎脚本调用接口主动推送通知。"""
-    token = os.environ.get("BHPKG_NOTIFY_TOKEN", "").strip()
-    channel = os.environ.get("BHPKG_NOTIFY_CHANNEL", "").strip()
-    missing = [
-        key
-        for key, value in (
-            ("BHPKG_NOTIFY_TOKEN", token),
-            ("BHPKG_NOTIFY_CHANNEL", channel),
-        )
-        if not value
-    ]
-    if missing:
-        log(
-            "未配置白虎主动推送参数 "
-            + "、".join(missing)
-            + "，跳过通知；请在“消息推送 → 脚本调用说明/渠道列表”中获取。"
-            "任务的“通知配置”绑定不会自动注入这些变量"
-        )
-        return False
-
-    url = (
-        os.environ.get("BHPKG_NOTIFY_URL", "").strip()
-        or DEFAULT_BAIHU_NOTIFY_URL
-    )
-    try:
-        response = requests.post(
-            url,
-            headers={"notify-token": token},
-            json={
-                "channel_id": channel,
-                "title": "且慢顾投计划",
-                "content": content,
-                "options": {"format": "markdown"},
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") != 200:
-            raise RuntimeError(data.get("msg") or f"返回代码 {data.get('code')}")
-        log("白虎通知已发送")
-        return True
-    except Exception as exc:
-        log(f"WARN: 白虎通知发送失败：{exc}", error=True)
-        return False
+def _env_candidates(raw: str, *, maximum: int = MAX_ENV_CANDIDATES) -> tuple[str, ...]:
+    """解析白虎可能用 `&` 合并的同名变量，新值优先。"""
+    values: list[str] = []
+    for value in reversed(str(raw or "").split("&")):
+        value = value.strip()
+        if value and value not in values:
+            values.append(value)
+        if len(values) >= maximum:
+            break
+    return tuple(values)
 
 
 @dataclass(frozen=True)
@@ -420,13 +379,47 @@ class FeishuConfig:
     app_secret: str
     app_token: str
     token_type: str
+    app_id_candidates: tuple[str, ...] = ()
+    app_secret_candidates: tuple[str, ...] = ()
+    app_token_candidates: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "app_id_candidates", self.app_id_candidates or (self.app_id,)
+        )
+        object.__setattr__(
+            self,
+            "app_secret_candidates",
+            self.app_secret_candidates or (self.app_secret,),
+        )
+        object.__setattr__(
+            self,
+            "app_token_candidates",
+            self.app_token_candidates or (self.app_token,),
+        )
+
+    def redact(self, message: Any) -> str:
+        result = str(message or "")
+        sensitive = (
+            self.app_id_candidates
+            + self.app_secret_candidates
+            + self.app_token_candidates
+        )
+        for value in sorted(set(sensitive), key=len, reverse=True):
+            if value:
+                result = result.replace(value, "[REDACTED]")
+        return result
 
     @classmethod
     def from_env(cls) -> FeishuConfig | None:
         values = {
-            "FEISHU_APP_ID": os.environ.get("FEISHU_APP_ID", "").strip(),
-            "FEISHU_APP_SECRET": os.environ.get("FEISHU_APP_SECRET", "").strip(),
-            "FEISHU_TABLE_TOKEN": os.environ.get("FEISHU_TABLE_TOKEN", "").strip(),
+            "FEISHU_APP_ID": _env_candidates(os.environ.get("FEISHU_APP_ID", "")),
+            "FEISHU_APP_SECRET": _env_candidates(
+                os.environ.get("FEISHU_APP_SECRET", "")
+            ),
+            "FEISHU_TABLE_TOKEN": _env_candidates(
+                os.environ.get("FEISHU_TABLE_TOKEN", "")
+            ),
         }
         configured = [key for key, value in values.items() if value]
         if not configured:
@@ -434,14 +427,18 @@ class FeishuConfig:
         missing = [key for key, value in values.items() if not value]
         if missing:
             raise ValueError("飞书为可选功能；启用时还需配置 " + "、".join(missing))
-        token_type = os.environ.get("FEISHU_TOKEN_TYPE", "bitable").strip().lower()
+        token_types = _env_candidates(os.environ.get("FEISHU_TOKEN_TYPE", "bitable"))
+        token_type = (token_types[0] if token_types else "bitable").lower()
         if token_type not in {"bitable", "wiki"}:
             raise ValueError("FEISHU_TOKEN_TYPE 只能是 bitable 或 wiki")
         return cls(
-            app_id=values["FEISHU_APP_ID"],
-            app_secret=values["FEISHU_APP_SECRET"],
-            app_token=values["FEISHU_TABLE_TOKEN"],
+            app_id=values["FEISHU_APP_ID"][0],
+            app_secret=values["FEISHU_APP_SECRET"][0],
+            app_token=values["FEISHU_TABLE_TOKEN"][0],
             token_type=token_type,
+            app_id_candidates=values["FEISHU_APP_ID"],
+            app_secret_candidates=values["FEISHU_APP_SECRET"],
+            app_token_candidates=values["FEISHU_TABLE_TOKEN"],
         )
 
 
@@ -453,27 +450,57 @@ class FeishuBitableClient:
         self.config = config
         self.app_token = config.app_token
         self.access_token = ""
+        self._app_token_validated = False
         if config.token_type == "wiki":
-            log(f"飞书：正在解析 Wiki Token {mask_token(config.app_token)}")
-            self.app_token = self._resolve_wiki_token(config.app_token)
-            log(f"飞书：Wiki Token 已解析为多维表格 {mask_token(self.app_token)}")
+            last_error = ""
+            for position, token in enumerate(config.app_token_candidates, start=1):
+                log(
+                    f"飞书：正在解析 Wiki Token 候选 "
+                    f"{position}/{len(config.app_token_candidates)}（{mask_token(token)}）"
+                )
+                try:
+                    self.app_token = self._resolve_wiki_token(token)
+                    self._app_token_validated = True
+                    log(
+                        "飞书：Wiki Token 已解析为多维表格 "
+                        + mask_token(self.app_token)
+                    )
+                    break
+                except Exception as exc:
+                    last_error = config.redact(exc)
+            else:
+                raise RuntimeError(
+                    f"飞书 Wiki Token 候选均解析失败：{last_error}"
+                )
 
     def _tenant_token(self) -> str:
-        response = requests.post(
-            f"{self.BASE_URL}/auth/v3/tenant_access_token/internal/",
-            json={"app_id": self.config.app_id, "app_secret": self.config.app_secret},
-            timeout=30,
-        )
-        response.raise_for_status()
-        data = response.json()
-        if data.get("code") != 0 or not data.get("tenant_access_token"):
-            raise RuntimeError(
-                "获取飞书 tenant_access_token 失败："
-                f"{data.get('msg') or data.get('code')}。"
-                "请确认 FEISHU_APP_ID 与 FEISHU_APP_SECRET 来自同一个飞书自建应用；"
-                "此步骤发生在 Wiki Token 解析之前，与 FEISHU_TABLE_TOKEN 无关"
+        pairs = [
+            (app_id, app_secret)
+            for app_id in self.config.app_id_candidates
+            for app_secret in self.config.app_secret_candidates
+        ][: MAX_ENV_CANDIDATES**2]
+        last_error = "未返回访问令牌"
+        for app_id, app_secret in pairs:
+            response = requests.post(
+                f"{self.BASE_URL}/auth/v3/tenant_access_token/internal/",
+                json={"app_id": app_id, "app_secret": app_secret},
+                timeout=30,
             )
-        return str(data["tenant_access_token"])
+            response.raise_for_status()
+            try:
+                data = response.json()
+            except requests.exceptions.JSONDecodeError:
+                last_error = "飞书返回了非 JSON 响应"
+                continue
+            if data.get("code") == 0 and data.get("tenant_access_token"):
+                return str(data["tenant_access_token"])
+            last_error = self.config.redact(data.get("msg") or data.get("code"))
+        raise RuntimeError(
+            "获取飞书 tenant_access_token 失败："
+            f"{last_error}（已尝试 {len(pairs)} 组候选凭据）。"
+            "请确认 FEISHU_APP_ID 与 FEISHU_APP_SECRET 来自同一个飞书自建应用；"
+            "此步骤发生在 Wiki Token 解析之前，与 FEISHU_TABLE_TOKEN 无关"
+        )
 
     def request(
         self,
@@ -509,7 +536,9 @@ class FeishuBitableClient:
             if (code in self.RETRYABLE_CODES or response.status_code >= 500) and attempt < 5:
                 time.sleep(attempt * 2)
                 continue
-            message = result.get("msg") or result.get("message") or response.reason
+            message = self.config.redact(
+                result.get("msg") or result.get("message") or response.reason
+            )
             raise RuntimeError(f"飞书接口失败（HTTP {response.status_code}, code={code}）：{message}")
         raise RuntimeError("飞书接口重试次数已用尽")
 
@@ -529,6 +558,24 @@ class FeishuBitableClient:
         return str(node["obj_token"])
 
     def list_tables(self) -> list[dict[str, Any]]:
+        if self.config.token_type == "bitable" and not self._app_token_validated:
+            last_error = ""
+            for position, token in enumerate(self.config.app_token_candidates, start=1):
+                self.app_token = token
+                try:
+                    items = self._list_tables()
+                    self._app_token_validated = True
+                    if position > 1:
+                        log(f"飞书：已切换到可用的 Table Token 候选 {position}")
+                    return items
+                except Exception as exc:
+                    last_error = self.config.redact(exc)
+            raise RuntimeError(
+                f"飞书 Table Token 候选均不可用：{last_error}"
+            )
+        return self._list_tables()
+
+    def _list_tables(self) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
         page_token = ""
         while True:
@@ -777,7 +824,7 @@ def sync_feishu(reports: list[dict[str, Any]], disabled: bool) -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="抓取且慢顾投计划并通过白虎推送")
+    parser = argparse.ArgumentParser(description="抓取且慢顾投计划并可选同步飞书")
     parser.add_argument(
         "--plans",
         default=os.environ.get("QIEMAN_PLANS", ""),
@@ -789,10 +836,14 @@ def parse_args() -> argparse.Namespace:
         default=positive_int(
             os.environ.get("QIEMAN_HISTORY_LIMIT"), default=3, maximum=20
         ),
-        help="通知中显示的最近调仓批次数，默认 3",
+        help="任务日志摘要中显示的最近调仓批次数，默认 3",
     )
     parser.add_argument("--no-feishu", action="store_true", help="本次不写飞书")
-    parser.add_argument("--no-notify", action="store_true", help="本次不发白虎通知")
+    parser.add_argument(
+        "--no-notify",
+        action="store_true",
+        help="已废弃：通知由白虎任务通知配置统一处理",
+    )
     parser.add_argument("--json", action="store_true", help="额外输出整理后的完整 JSON")
     return parser.parse_args()
 
@@ -843,12 +894,10 @@ def main() -> int:
         failures.append(feishu_status)
         log(f"ERROR: {feishu_status}", error=True)
 
-    content = render_notification(reports, feishu_status, failures)
-    log("\n" + content)
+    summary = render_task_summary(reports, feishu_status, failures)
+    log("\n" + summary)
     if args.json:
         print(json.dumps(reports, ensure_ascii=False, indent=2))
-    if not args.no_notify:
-        notify_baihu(content)
     if failures:
         log("执行存在失败：" + "；".join(failures), error=True)
         return 1

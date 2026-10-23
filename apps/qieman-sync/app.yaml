@@ -1,20 +1,20 @@
 spec_version: "v1"
 id: "qieman-sync"
 name: "且慢顾投计划同步"
-version: "1.0.2"
+version: "1.0.3"
 author: "taotie6"
 category: "投资工具"
 last_commit: "2026-10-22T00:00:00+08:00"
 template:
   - tag: "QiemanSync"
   - mise_languages: "python@3.12.11"
-description: "抓取且慢顾投计划持仓与调仓记录，整理后通过白虎原生通知推送，可选同步飞书多维表格。"
+description: "抓取且慢顾投计划持仓与调仓记录，可选同步飞书多维表格，执行结果由白虎任务通知推送。"
 homepage: "https://qieman.com/longwin/compositions/LONG_WIN"
 build_opts:
   force_setup: false
   skip_setup: false
   skip_sync: false
-  overwrite_env: false
+  overwrite_env: true
   overwrite_task: true
 schedule_opts:
   schedule: "0 30 20 * * 1-5"
@@ -50,33 +50,12 @@ env_schema:
     type: "string"
     required: false
     default: "3"
-    description: "白虎通知中显示最近多少批调仓，范围 1-20。"
-  - key: "QIEMAN_NOTIFY_MAX_LENGTH"
-    label: "通知最大字符数"
-    type: "string"
-    required: false
-    default: "3500"
-  - key: "BHPKG_NOTIFY_TOKEN"
-    label: "白虎脚本调用 Token"
-    type: "secret"
-    required: false
-    description: "主动推送所需；在白虎“消息推送 → 脚本调用说明”中获取。"
-  - key: "BHPKG_NOTIFY_CHANNEL"
-    label: "白虎通知渠道 ID"
-    type: "string"
-    required: false
-    description: "主动推送所需；在白虎“消息推送 → 渠道列表”中获取。"
-  - key: "BHPKG_NOTIFY_URL"
-    label: "白虎通知接口地址"
-    type: "string"
-    required: false
-    default: "http://localhost:8052/api/v1/notify/send"
-    description: "通常保持默认值；白虎服务地址不同才需要修改。"
+    description: "任务日志摘要中显示最近多少批调仓，范围 1-20。"
   - key: "FEISHU_APP_ID"
     label: "飞书应用 App ID"
-    type: "string"
+    type: "secret"
     required: false
-    description: "可选；不配置任何 FEISHU_* 变量时仅通过白虎通知推送。"
+    description: "可选；启用飞书同步时与 App Secret、Table Token 一起配置。"
   - key: "FEISHU_APP_SECRET"
     label: "飞书应用 App Secret"
     type: "secret"
@@ -110,16 +89,16 @@ sync_rules:
       enabled: true
 scenarios:
   - id: "notify-only"
-    name: "白虎通知"
-    description: "工作日 20:30 获取并整理数据，通过白虎原生通知推送。"
+    name: "数据整理"
+    description: "工作日 20:30 获取并整理数据；请在白虎任务通知配置中绑定渠道。"
     default: true
     task_presets:
       sync-qieman:
         enabled: true
         cron: "0 30 20 * * 1-5"
   - id: "notify-and-feishu"
-    name: "白虎通知 + 飞书"
-    description: "配置全部 FEISHU_* 变量后，在通知之外增量同步飞书多维表格。"
+    name: "飞书同步"
+    description: "配置全部 FEISHU_* 机密变量后增量同步飞书；通知由白虎任务通知配置统一处理。"
     task_presets:
       sync-qieman:
         enabled: true
