@@ -4,7 +4,7 @@
   "generated_at": "2026-10-23T16:00:00Z",
   "generated_at_utc8": "2026-10-24 00:00:00",
   "build_time": "2026-10-24 00:00:00",
-  "total_apps": 8,
+  "total_apps": 9,
   "apps": [
     {
       "spec_version": "v1",
@@ -191,6 +191,103 @@
       "manifest_raw": "spec_version: \"v1\"\nid: \"iios-checkin\"\nname: \"iios.fun 每日签到\"\nversion: \"1.0.2\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-10-20T00:00:00+08:00\"\ntemplate:\n  - tag: \"IiosCheckin\"\n  - mise_languages: \"node@23.11.1\"\ndescription: \"iios.fun 每日签到白虎应用，支持单账号、多账号、WASM 签名与白虎原生通知。\"\nhomepage: \"https://www.iios.fun\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 10 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    path: \"apps/iios-checkin/main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- node --check\n    \"{app_dir}/repo/apps/iios-checkin/main/run.cjs\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- node --check \"{app_dir}/repo/apps/iios-checkin/main/baihu-shim.cjs\"\n    mise exec {mise_languages} -- node --check \"{app_dir}/repo/apps/iios-checkin/main/iios-original.js\"\nenv_schema:\n  - key: \"IIOS_TOKEN\"\n    label: \"单账号 Token\"\n    type: \"secret\"\n    required: false\n    description: \"抓取 Authorization 请求头，可带或不带 Basic 前缀。单账号与多账号配置二选一。\"\n    placeholder: \"Basic xxxxx 或 xxxxx\"\n  - key: \"IIOS_COOKIE\"\n    label: \"单账号 Cookie\"\n    type: \"secret\"\n    required: false\n    description: \"可选；填写浏览器请求中的完整 Cookie。\"\n  - key: \"IIOS_USER_AGENT\"\n    label: \"浏览器 User-Agent\"\n    type: \"string\"\n    required: false\n    default: \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36\"\n  - key: \"IIOS_SESSIONS\"\n    label: \"多账号 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"JSON 数组；每项支持 token、cookie、userAgent/ua、label。配置后优先于单账号。\"\n    placeholder: '[{\"label\":\"账号1\",\"token\":\"xxx\",\"cookie\":\"\",\"userAgent\":\"Mozilla/5.0 ...\"}]'\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/iios-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"iios.fun 每日签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"node run.cjs\"\n      default_cron: \"0 10 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日签到\"\n    description: \"每天 08:10 执行，随机延迟最多 5 分钟。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 10 8 * * *\"\n",
       "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/app.yaml",
       "updated_at": "2026-10-20 00:00:00"
+    },
+    {
+      "spec_version": "v1",
+      "id": "qieman-adjust-alert",
+      "name": "且慢顾投调仓提醒",
+      "version": "1.0.0",
+      "author": "taotie6",
+      "category": "投资工具",
+      "last_commit": "2026-10-24T00:00:00+08:00",
+      "description": "工作日 14:40 检查且慢顾投计划当日是否有调仓更新，通过 NOTIFY_UPDATE 标记日志配合白虎通知实现有更新才提醒，可选脚本直推。",
+      "homepage": "https://qieman.com/longwin/compositions/LONG_WIN",
+      "build_opts": {
+        "force_setup": false,
+        "skip_setup": false,
+        "skip_sync": false,
+        "overwrite_env": true,
+        "overwrite_task": true
+      },
+      "schedule_opts": {
+        "schedule": "0 40 14 * * 1-5",
+        "random_range": 60,
+        "timeout": 10,
+        "retry_count": 1,
+        "retry_interval": 60
+      },
+      "template": [
+        {
+          "tag": "QiemanAdjustAlert"
+        },
+        {
+          "mise_languages": "python@3.12.11"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "check-adjust",
+          "name": "且慢顾投调仓提醒",
+          "source": "repo",
+          "language": "{mise_languages}",
+          "command": "python check_adjust.py",
+          "default_cron": "0 40 14 * * 1-5",
+          "enabled": true
+        }
+      ],
+      "tasks_count": 1,
+      "env_schema": [
+        {
+          "key": "QIEMAN_PLANS",
+          "label": "且慢计划",
+          "type": "string",
+          "required": false,
+          "default": "LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划",
+          "description": "逗号分隔的 计划代码:显示名称；同批次调仓会按批次 ID 去重合并提醒。"
+        },
+        {
+          "key": "BHPKG_NOTIFY_TOKEN",
+          "label": "白虎脚本调用 Token",
+          "type": "secret",
+          "required": false,
+          "description": "可选直推模式；在白虎“消息推送 → 脚本调用说明”中获取，与渠道 ID 同时配置。"
+        },
+        {
+          "key": "BHPKG_NOTIFY_CHANNEL",
+          "label": "白虎通知渠道 ID",
+          "type": "string",
+          "required": false,
+          "description": "可选直推模式；在白虎“消息推送 → 渠道列表”中获取。"
+        },
+        {
+          "key": "BHPKG_NOTIFY_URL",
+          "label": "白虎通知接口地址",
+          "type": "string",
+          "required": false,
+          "default": "http://localhost:8052/api/v1/notify/send",
+          "description": "直推模式接口地址，通常保持默认；白虎服务地址不同才需要修改。"
+        }
+      ],
+      "scenarios": [
+        {
+          "id": "notify-only",
+          "name": "调仓提醒",
+          "description": "工作日 14:40 检查当日调仓；推荐用任务通知配置 + 日志变量正则提取实现有更新才通知。",
+          "default": true,
+          "task_presets": {
+            "check-adjust": {
+              "enabled": true,
+              "cron": "0 40 14 * * 1-5"
+            }
+          }
+        }
+      ],
+      "scenarios_count": 1,
+      "app_dir": "qieman-adjust-alert",
+      "manifest_path": "apps/qieman-adjust-alert/app.yaml",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"qieman-adjust-alert\"\nname: \"且慢顾投调仓提醒\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"投资工具\"\nlast_commit: \"2026-10-24T00:00:00+08:00\"\ntemplate:\n  - tag: \"QiemanAdjustAlert\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"工作日 14:40 检查且慢顾投计划当日是否有调仓更新，通过 NOTIFY_UPDATE 标记日志配合白虎通知实现有更新才提醒，可选脚本直推。\"\nhomepage: \"https://qieman.com/longwin/compositions/LONG_WIN\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: true\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 40 14 * * 1-5\"\n  random_range: 60\n  timeout: 10\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    path: \"apps/qieman-adjust-alert/main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qieman-adjust-alert/main/check_adjust.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qieman-adjust-alert/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qieman-adjust-alert/main/check_adjust.py\"\nenv_schema:\n  - key: \"QIEMAN_PLANS\"\n    label: \"且慢计划\"\n    type: \"string\"\n    required: false\n    default: \"LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划\"\n    description: \"逗号分隔的 计划代码:显示名称；同批次调仓会按批次 ID 去重合并提醒。\"\n  - key: \"BHPKG_NOTIFY_TOKEN\"\n    label: \"白虎脚本调用 Token\"\n    type: \"secret\"\n    required: false\n    description: \"可选直推模式；在白虎“消息推送 → 脚本调用说明”中获取，与渠道 ID 同时配置。\"\n  - key: \"BHPKG_NOTIFY_CHANNEL\"\n    label: \"白虎通知渠道 ID\"\n    type: \"string\"\n    required: false\n    description: \"可选直推模式；在白虎“消息推送 → 渠道列表”中获取。\"\n  - key: \"BHPKG_NOTIFY_URL\"\n    label: \"白虎通知接口地址\"\n    type: \"string\"\n    required: false\n    default: \"http://localhost:8052/api/v1/notify/send\"\n    description: \"直推模式接口地址，通常保持默认；白虎服务地址不同才需要修改。\"\nsync_rules:\n  defaults:\n    timeout: 10\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qieman-adjust-alert/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"check-adjust\"\n      name: \"且慢顾投调仓提醒\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python check_adjust.py\"\n      default_cron: \"0 40 14 * * 1-5\"\n      enabled: true\nscenarios:\n  - id: \"notify-only\"\n    name: \"调仓提醒\"\n    description: \"工作日 14:40 检查当日调仓；推荐用任务通知配置 + 日志变量正则提取实现有更新才通知。\"\n    default: true\n    task_presets:\n      check-adjust:\n        enabled: true\n        cron: \"0 40 14 * * 1-5\"\n",
+      "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-adjust-alert/app.yaml",
+      "updated_at": "2026-10-24 00:00:00"
     },
     {
       "spec_version": "v1",

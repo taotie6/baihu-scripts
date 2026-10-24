@@ -1,0 +1,87 @@
+spec_version: "v1"
+id: "qieman-adjust-alert"
+name: "且慢顾投调仓提醒"
+version: "1.0.0"
+author: "taotie6"
+category: "投资工具"
+last_commit: "2026-10-24T00:00:00+08:00"
+template:
+  - tag: "QiemanAdjustAlert"
+  - mise_languages: "python@3.12.11"
+description: "工作日 14:40 检查且慢顾投计划当日是否有调仓更新，通过 NOTIFY_UPDATE 标记日志配合白虎通知实现有更新才提醒，可选脚本直推。"
+homepage: "https://qieman.com/longwin/compositions/LONG_WIN"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: true
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 40 14 * * 1-5"
+  random_range: 60
+  timeout: 10
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    path: "apps/qieman-adjust-alert/main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c "import requests"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/qieman-adjust-alert/main/check_adjust.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/qieman-adjust-alert/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/qieman-adjust-alert/main/check_adjust.py"
+env_schema:
+  - key: "QIEMAN_PLANS"
+    label: "且慢计划"
+    type: "string"
+    required: false
+    default: "LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划"
+    description: "逗号分隔的 计划代码:显示名称；同批次调仓会按批次 ID 去重合并提醒。"
+  - key: "BHPKG_NOTIFY_TOKEN"
+    label: "白虎脚本调用 Token"
+    type: "secret"
+    required: false
+    description: "可选直推模式；在白虎“消息推送 → 脚本调用说明”中获取，与渠道 ID 同时配置。"
+  - key: "BHPKG_NOTIFY_CHANNEL"
+    label: "白虎通知渠道 ID"
+    type: "string"
+    required: false
+    description: "可选直推模式；在白虎“消息推送 → 渠道列表”中获取。"
+  - key: "BHPKG_NOTIFY_URL"
+    label: "白虎通知接口地址"
+    type: "string"
+    required: false
+    default: "http://localhost:8052/api/v1/notify/send"
+    description: "直推模式接口地址，通常保持默认；白虎服务地址不同才需要修改。"
+sync_rules:
+  defaults:
+    timeout: 10
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/qieman-adjust-alert/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "check-adjust"
+      name: "且慢顾投调仓提醒"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python check_adjust.py"
+      default_cron: "0 40 14 * * 1-5"
+      enabled: true
+scenarios:
+  - id: "notify-only"
+    name: "调仓提醒"
+    description: "工作日 14:40 检查当日调仓；推荐用任务通知配置 + 日志变量正则提取实现有更新才通知。"
+    default: true
+    task_presets:
+      check-adjust:
+        enabled: true
+        cron: "0 40 14 * * 1-5"
