@@ -254,7 +254,7 @@ class FeishuSyncTest(unittest.TestCase):
         config = QIEMAN.FeishuConfig("app", "secret", "base-token", "bitable")
         self.client = QIEMAN.FeishuBitableClient(config)
 
-    def test_ensure_fields_creates_missing_and_updates_stale_description(self) -> None:
+    def test_ensure_fields_creates_missing_and_never_touches_existing(self) -> None:
         expected = [
             {"name": "基金代码", "type": 1, "desc": "新说明"},
             {"name": "基金名称", "type": 1, "desc": "名称说明"},
@@ -270,13 +270,42 @@ class FeishuSyncTest(unittest.TestCase):
         with patch.object(self.client, "list_fields", return_value=existing), patch.object(
             self.client, "request"
         ) as request:
-            result = self.client.ensure_fields("tbl-holding", expected)
+            added = self.client.ensure_fields("tbl-holding", expected)
 
-        self.assertEqual(result, (1, 1))
-        self.assertEqual(request.call_count, 2)
-        payloads = [call.kwargs["data"] for call in request.call_args_list]
-        self.assertEqual({payload["description"]["text"] for payload in payloads}, {"新说明", "名称说明"})
-        self.assertEqual(request.call_args_list[0].kwargs["data"]["type"], 2)
+        self.assertEqual(added, 1)
+        request.assert_called_once()
+        call = request.call_args
+        self.assertEqual(call.args[0], "POST")
+        self.assertIn("/tables/tbl-holding/fields", call.args[1])
+        self.assertNotIn("fld-code", call.args[1])
+        payload = call.kwargs["data"]
+        self.assertEqual(payload["field_name"], "基金名称")
+        self.assertEqual(payload["description"]["text"], "名称说明")
+
+    def test_create_table_carries_all_initial_fields(self) -> None:
+        fields = [
+            {"name": "基金代码", "type": 1, "desc": "唯一键"},
+            {
+                "name": "目标占比",
+                "type": 2,
+                "desc": "权重",
+                "ui_type": "Progress",
+                "property": {"formatter": "%"},
+            },
+        ]
+        with patch.object(
+            self.client, "request", return_value={"data": {"table_id": "tbl-new"}}
+        ) as request:
+            self.assertEqual(self.client.create_table("新表", fields), "tbl-new")
+
+        table = request.call_args.kwargs["data"]["table"]
+        self.assertEqual(table["name"], "新表")
+        self.assertEqual(
+            [field["field_name"] for field in table["fields"]], ["基金代码", "目标占比"]
+        )
+        self.assertEqual(table["fields"][0]["description"]["text"], "唯一键")
+        self.assertEqual(table["fields"][1]["ui_type"], "Progress")
+        self.assertEqual(table["fields"][1]["property"], {"formatter": "%"})
 
     def test_sync_report_counts_holdings_and_skips_existing_history(self) -> None:
         report = {
@@ -339,7 +368,7 @@ class FeishuSyncTest(unittest.TestCase):
                 }
             ],
         ]
-        with patch.object(self.client, "ensure_fields", return_value=(0, 0)), patch.object(
+        with patch.object(self.client, "ensure_fields", return_value=0), patch.object(
             self.client, "list_records", side_effect=records
         ), patch.object(self.client, "batch_create") as batch_create, patch.object(
             self.client, "batch_update"

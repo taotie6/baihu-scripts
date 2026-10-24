@@ -216,7 +216,7 @@ class MainExitStatusTest(unittest.TestCase):
 
 
 class FeishuSyncTest(unittest.TestCase):
-    def test_ensure_fields_reports_created_and_updated_descriptions(self) -> None:
+    def test_ensure_fields_creates_missing_and_never_touches_existing(self) -> None:
         config = VALUATION.FeishuConfig("app", "secret", "base-token", "bitable")
         client = VALUATION.FeishuBitableClient(config)
         expected = [
@@ -233,10 +233,41 @@ class FeishuSyncTest(unittest.TestCase):
         with patch.object(client, "list_fields", return_value=existing), patch.object(
             client, "request"
         ) as request:
-            result = client.ensure_fields("tbl-index", expected)
+            added = client.ensure_fields("tbl-index", expected)
 
-        self.assertEqual(result, (1, 1))
-        self.assertEqual(request.call_count, 2)
+        self.assertEqual(added, 1)
+        request.assert_called_once()
+        call = request.call_args
+        self.assertEqual(call.args[0], "POST")
+        self.assertNotIn("fld-code", call.args[1])
+        self.assertEqual(call.kwargs["data"]["field_name"], "指数名称")
+        self.assertEqual(call.kwargs["data"]["description"]["text"], "名称说明")
+
+    def test_create_table_carries_all_initial_fields(self) -> None:
+        config = VALUATION.FeishuConfig("app", "secret", "base-token", "bitable")
+        client = VALUATION.FeishuBitableClient(config)
+        fields = [
+            {"name": "指数代码", "type": 1, "desc": "唯一键"},
+            {
+                "name": "市盈率",
+                "type": 2,
+                "desc": "PE",
+                "ui_type": "Number",
+                "property": {"formatter": "0.00"},
+            },
+        ]
+        with patch.object(
+            client, "request", return_value={"data": {"table_id": "tbl-new"}}
+        ) as request:
+            self.assertEqual(client.create_table("新表", fields), "tbl-new")
+
+        table = request.call_args.kwargs["data"]["table"]
+        self.assertEqual(table["name"], "新表")
+        self.assertEqual(
+            [field["field_name"] for field in table["fields"]], ["指数代码", "市盈率"]
+        )
+        self.assertEqual(table["fields"][1]["ui_type"], "Number")
+        self.assertEqual(table["fields"][1]["property"], {"formatter": "0.00"})
 
     def test_sync_feishu_reports_each_table_result(self) -> None:
         report = {
@@ -275,7 +306,7 @@ class FeishuSyncTest(unittest.TestCase):
             {"name": "每日债券收益", "table_id": "tbl-bond"},
         ]
         fake_client.ensure_table.side_effect = ["tbl-index", "tbl-bond"]
-        fake_client.ensure_fields.side_effect = [(0, 1), (1, 0)]
+        fake_client.ensure_fields.side_effect = [0, 1]
         fake_client.upsert_rows.side_effect = [(0, 32), (0, 5)]
         environment = {
             "FEISHU_APP_ID": "app",

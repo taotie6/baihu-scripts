@@ -41,30 +41,145 @@ CATEGORY_MAP = {
     "CONVERTIBLE_BOND": "可转债",
 }
 
+# 以下字段定义与原多维表格（全天候系统）逐列核对过：描述、类型、单选
+# 选项、数字格式均保持一致，仅在新建表/字段时使用，已有字段永不改动。
 INDEX_FIELDS = [
-    {"name": "指数代码", "type": TEXT_FIELD, "desc": "指数的官方代码（例如 399006.SZ）。"},
-    {"name": "指数名称", "type": TEXT_FIELD, "desc": "指数的中文名称。"},
-    {"name": "当前PE", "type": NUMBER_FIELD, "desc": "市盈率，通常用于衡量指数估值，数值越低代表价格相对盈利越低。"},
-    {"name": "PE百分位", "type": NUMBER_FIELD, "desc": "当前 PE 在历史统计区间所处的百分位。"},
-    {"name": "PE最低", "type": NUMBER_FIELD, "desc": "指数 PE 在统计区间的历史最低值。"},
-    {"name": "PE最高", "type": NUMBER_FIELD, "desc": "指数 PE 在统计区间的历史最高值。"},
-    {"name": "当前PB", "type": NUMBER_FIELD, "desc": "市净率，通常适用于周期性行业估值。"},
-    {"name": "PB百分位", "type": NUMBER_FIELD, "desc": "当前 PB 在历史统计区间所处的百分位。"},
-    {"name": "PB最低", "type": NUMBER_FIELD, "desc": "指数 PB 在统计区间的历史最低值。"},
-    {"name": "PB最高", "type": NUMBER_FIELD, "desc": "指数 PB 在统计区间的历史最高值。"},
-    {"name": "ROE", "type": NUMBER_FIELD, "desc": "净资产收益率，用于观察长期盈利能力。"},
-    {"name": "估值状态", "type": SELECT_FIELD, "desc": "低估、适中或高估。"},
-    {"name": "指数类型", "type": SELECT_FIELD, "desc": "宽基、行业、策略、主题或全球等分类。"},
-    {"name": "更新时间", "type": TEXT_FIELD, "desc": "且慢估值数据的更新日期。"},
+    {"name": "指数代码", "type": TEXT_FIELD, "desc": "指数的官方代码 (e.g. 399006.SZ)"},
+    {"name": "指数名称", "type": TEXT_FIELD, "desc": "指数的中文名称"},
+    {
+        "name": "当前PE",
+        "type": NUMBER_FIELD,
+        "desc": "市盈率，通常用来衡量指数是否被高估或低估，数值越低越好。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "PE百分位",
+        "type": NUMBER_FIELD,
+        "desc": "统计学指标，用来说明当前PE值比历史上百分之多少的时间都高。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "PE最低",
+        "type": NUMBER_FIELD,
+        "desc": "指数PE在统计区间的历史最低值。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "PE最高",
+        "type": NUMBER_FIELD,
+        "desc": "指数PE在统计区间的历史最高值。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "当前PB",
+        "type": NUMBER_FIELD,
+        "desc": "市净率，通常适用于周期性行业估值，数值越低越好。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "PB百分位",
+        "type": NUMBER_FIELD,
+        "desc": "统计学指标，用来说明当前PB值比历史上百分之多少的时间都高。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "PB最低",
+        "type": NUMBER_FIELD,
+        "desc": "指数PB在统计区间的历史最低值。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "PB最高",
+        "type": NUMBER_FIELD,
+        "desc": "指数PB在统计区间的历史最高值。",
+        "property": {"formatter": "0.0"},
+    },
+    {
+        "name": "ROE",
+        "type": NUMBER_FIELD,
+        "desc": "净资产收益率，通常用来衡量长期盈利能力。",
+        "property": {"formatter": "0.00%"},
+    },
+    {
+        "name": "估值状态",
+        "type": SELECT_FIELD,
+        "desc": "低估：投资性价比高；适中：可持续关注；高估：投资性价比低。",
+        "property": {
+            "options": [
+                {"name": "低估", "color": 27},
+                {"name": "适中", "color": 11},
+                {"name": "高估", "color": 33},
+            ]
+        },
+    },
+    {
+        "name": "指数类型",
+        "type": SELECT_FIELD,
+        "desc": "宽基、行业、策略、全球等分类。",
+        "property": {
+            "options": [
+                {"name": "行业", "color": 0},
+                {"name": "THEME", "color": 1},
+                {"name": "全球", "color": 2},
+                {"name": "策略", "color": 3},
+                {"name": "宽基", "color": 4},
+                {"name": "主题", "color": 5},
+            ]
+        },
+    },
+    {
+        "name": "更新时间",
+        "type": TEXT_FIELD,
+        "desc": "估值数据的更新日期 (格式: 2020/3/3 20:00)。",
+    },
 ]
 BOND_FIELDS = [
-    {"name": "债券代码", "type": TEXT_FIELD, "desc": "债券指数的官方代码（例如 CBA08203.CS）。"},
-    {"name": "债券名称", "type": TEXT_FIELD, "desc": "债券指数名称；名称中的期限可作为久期参考。"},
-    {"name": "到期收益率", "type": NUMBER_FIELD, "desc": "Yield to Maturity；数值越高通常代表债券价格越低。"},
-    {"name": "百分位", "type": NUMBER_FIELD, "desc": "当前到期收益率在历史统计区间所处的百分位。"},
-    {"name": "估值状态", "type": SELECT_FIELD, "desc": "低估表示收益率相对较高，高估表示收益率相对较低。"},
-    {"name": "债券分类", "type": SELECT_FIELD, "desc": "利率债、信用债或可转债等分类。"},
-    {"name": "更新时间", "type": TEXT_FIELD, "desc": "且慢估值数据的更新日期。"},
+    {"name": "债券代码", "type": TEXT_FIELD, "desc": "债券的官方代码 (e.g. CBA08203.CS)"},
+    {
+        "name": "债券名称",
+        "type": TEXT_FIELD,
+        "desc": "久期：债券指数名称中的期限可作为久期的参考区间，其反映债券价格对利率变动的敏感度，久期越长收益波动越大。",
+    },
+    {
+        "name": "到期收益率",
+        "type": NUMBER_FIELD,
+        "desc": "Yield to Maturity，简称YTM，是假设持有债券至到期，期间将收到的利息按到期收益率进行再投资，在此情况下能获得的平均收益率。它综合反映了债券在持有期内的实际收益水平，数值越高代表价格越低。",
+        "property": {"formatter": "0.00%"},
+    },
+    {
+        "name": "百分位",
+        "type": NUMBER_FIELD,
+        "desc": "统计学指标，用来表明当前YTM在历史区间所处的位置。例：YTM百分位20%则代表这时的YTM比历史上20%的时候都高。",
+        "property": {"formatter": "0.00%"},
+    },
+    {
+        "name": "估值状态",
+        "type": SELECT_FIELD,
+        "desc": "低估：YTM处于历史高位，当前收益率性价比高；适中：YTM处于中枢区间，建议保持跟踪；高估：YTM处于历史低位，注意利率波动风险。",
+        "property": {
+            "options": [
+                {"name": "低估", "color": 27},
+                {"name": "适中", "color": 11},
+                {"name": "高估", "color": 33},
+            ]
+        },
+    },
+    {
+        "name": "债券分类",
+        "type": SELECT_FIELD,
+        "desc": "债券的投资类别",
+        "property": {
+            "options": [
+                {"name": "利率债", "color": 0},
+                {"name": "COMPOSITE_BOND", "color": 1},
+            ]
+        },
+    },
+    {
+        "name": "更新时间",
+        "type": TEXT_FIELD,
+        "desc": "估值数据的更新日期 (格式: 2020/3/3 20:00)。",
+    },
 ]
 
 
@@ -530,23 +645,44 @@ class FeishuBitableClient:
             if not data.get("has_more"):
                 return items
 
-    def create_table(self, name: str) -> str:
+    @staticmethod
+    def _field_payload(field: dict[str, Any]) -> dict[str, Any]:
+        """建表/建字段时的完整字段定义；已有字段不会被更新，因此只在这里出现。"""
+        payload: dict[str, Any] = {
+            "field_name": str(field["name"]),
+            "type": int(field["type"]),
+            "description": {"disable_sync": False, "text": str(field["desc"])},
+        }
+        if field.get("ui_type"):
+            payload["ui_type"] = str(field["ui_type"])
+        if field.get("property") is not None:
+            payload["property"] = field["property"]
+        return payload
+
+    def create_table(self, name: str, fields: list[dict[str, Any]]) -> str:
         result = self.request(
             "POST",
             f"/bitable/v1/apps/{self.app_token}/tables",
-            data={"table": {"name": name}},
+            data={
+                "table": {
+                    "name": name,
+                    "fields": [self._field_payload(field) for field in fields],
+                }
+            },
         )
         table_id = result.get("data", {}).get("table_id")
         if not table_id:
             raise RuntimeError(f"飞书创建数据表「{name}」后未返回 table_id")
         return str(table_id)
 
-    def ensure_table(self, name: str, tables: dict[str, str]) -> str:
+    def ensure_table(
+        self, name: str, fields: list[dict[str, Any]], tables: dict[str, str]
+    ) -> str:
         if name in tables:
             log(f"飞书：找到数据表「{name}」（{tables[name]}）")
             return tables[name]
-        log(f"飞书：创建数据表「{name}」")
-        tables[name] = self.create_table(name)
+        log(f"飞书：创建数据表「{name}」，一次带出 {len(fields)} 个字段")
+        tables[name] = self.create_table(name, fields)
         log(f"飞书：已创建数据表「{name}」（{tables[name]}）")
         return tables[name]
 
@@ -560,47 +696,20 @@ class FeishuBitableClient:
             if isinstance(item, dict) and item.get("field_name")
         }
 
-    def ensure_fields(
-        self, table_id: str, expected: list[dict[str, Any]]
-    ) -> tuple[int, int]:
+    def ensure_fields(self, table_id: str, expected: list[dict[str, Any]]) -> int:
+        """只补建缺失字段；已有字段的说明、类型和显示属性一律不读不改。"""
         existing = self.list_fields(table_id)
         added = 0
-        updated = 0
         for field in expected:
-            name = str(field["name"])
-            payload = {
-                "field_name": name,
-                "type": int(field["type"]),
-                "description": {"disable_sync": False, "text": str(field["desc"])},
-            }
-            current = existing.get(name)
-            if current is None:
-                self.request(
-                    "POST",
-                    f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields",
-                    data=payload,
-                )
-                added += 1
+            if str(field["name"]) in existing:
                 continue
-            current_description = current.get("description") or {}
-            current_text = (
-                current_description.get("text", "")
-                if isinstance(current_description, dict)
-                else str(current_description)
+            self.request(
+                "POST",
+                f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields",
+                data=self._field_payload(field),
             )
-            if current_text != field["desc"]:
-                field_id = current.get("field_id")
-                if not field_id:
-                    raise RuntimeError(f"飞书字段 {name} 缺少 field_id")
-                update_payload = dict(payload)
-                update_payload["type"] = int(current.get("type") or field["type"])
-                self.request(
-                    "PUT",
-                    f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields/{field_id}",
-                    data=update_payload,
-                )
-                updated += 1
-        return added, updated
+            added += 1
+        return added
 
     def list_records(self, table_id: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
@@ -725,28 +834,18 @@ def sync_feishu(report: dict[str, Any], disabled: bool) -> str:
     log(f"飞书：共找到 {len(tables)} 个数据表：{list(tables)}")
 
     log("飞书：[1/2] 同步「每日指数估值」")
-    index_table = client.ensure_table("每日指数估值", tables)
-    index_added_fields, index_updated_fields = client.ensure_fields(
-        index_table, INDEX_FIELDS
-    )
-    log(
-        "飞书：「每日指数估值」字段已就绪（"
-        f"新增 {index_added_fields}，更新说明 {index_updated_fields}）"
-    )
+    index_table = client.ensure_table("每日指数估值", INDEX_FIELDS, tables)
+    index_added_fields = client.ensure_fields(index_table, INDEX_FIELDS)
+    log(f"飞书：「每日指数估值」字段已就绪（补建 {index_added_fields}，已有字段未改动）")
     index_added, index_updated = client.upsert_rows(
         index_table, index_rows(report), "指数代码"
     )
     log(f"飞书：「每日指数估值」同步完成，新增 {index_added}，更新 {index_updated}")
 
     log("飞书：[2/2] 同步「每日债券收益」")
-    bond_table = client.ensure_table("每日债券收益", tables)
-    bond_added_fields, bond_updated_fields = client.ensure_fields(
-        bond_table, BOND_FIELDS
-    )
-    log(
-        "飞书：「每日债券收益」字段已就绪（"
-        f"新增 {bond_added_fields}，更新说明 {bond_updated_fields}）"
-    )
+    bond_table = client.ensure_table("每日债券收益", BOND_FIELDS, tables)
+    bond_added_fields = client.ensure_fields(bond_table, BOND_FIELDS)
+    log(f"飞书：「每日债券收益」字段已就绪（补建 {bond_added_fields}，已有字段未改动）")
     bond_added, bond_updated = client.upsert_rows(
         bond_table, bond_rows(report), "债券代码"
     )

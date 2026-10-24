@@ -34,27 +34,113 @@ DEFAULT_PLANS = OrderedDict(
 ORDER_CODE_MAP = {"022": "买入", "024": "卖出"}
 TEXT_FIELD = 1
 NUMBER_FIELD = 2
+SELECT_FIELD = 3
 DATE_FIELD = 5
+# 以下字段定义与原多维表格（全天候系统）逐列核对过：类型、单选选项、
+# 数字与日期格式均保持一致，仅在新建表/字段时使用，已有字段永不改动。
 HOLDING_FIELDS = [
     {"name": "基金代码", "type": TEXT_FIELD, "desc": "基金或投资标的代码，作为持仓同步的唯一键。"},
     {"name": "基金名称", "type": TEXT_FIELD, "desc": "基金或投资标的名称。"},
-    {"name": "资产类别", "type": TEXT_FIELD, "desc": "且慢计划中的资产分类。"},
-    {"name": "目标占比", "type": NUMBER_FIELD, "desc": "该标的在计划中的目标权重，原始值为 0–1 小数。"},
-    {"name": "计划份数", "type": NUMBER_FIELD, "desc": "长赢计划分配给该标的计划份数。"},
-    {"name": "单位净值", "type": NUMBER_FIELD, "desc": "且慢返回的最新单位净值。"},
-    {"name": "净值日期", "type": DATE_FIELD, "desc": "单位净值对应的日期。"},
-    {"name": "主理人持有单价", "type": NUMBER_FIELD, "desc": "且慢公开计划中的主理人持有单价。"},
+    {
+        "name": "资产类别",
+        "type": SELECT_FIELD,
+        "desc": "且慢计划中的资产分类。",
+        "property": {
+            "options": [
+                {"name": "A股", "color": 0},
+                {"name": "海外成熟市场股票", "color": 1},
+                {"name": "海外新兴市场股票", "color": 2},
+                {"name": "境内债券", "color": 3},
+                {"name": "海外债券", "color": 4},
+                {"name": "原油", "color": 5},
+                {"name": "黄金", "color": 6},
+            ]
+        },
+    },
+    {
+        "name": "目标占比",
+        "type": NUMBER_FIELD,
+        "desc": "该标的在计划中的目标权重，原始值为 0–1 小数。",
+        "property": {"formatter": "0.00%"},
+    },
+    {
+        "name": "计划份数",
+        "type": NUMBER_FIELD,
+        "desc": "长赢计划分配给该标的计划份数。",
+        "property": {"formatter": "0"},
+    },
+    {
+        "name": "单位净值",
+        "type": NUMBER_FIELD,
+        "desc": "且慢返回的最新单位净值。",
+        "property": {"formatter": "0.0000"},
+    },
+    {
+        "name": "净值日期",
+        "type": DATE_FIELD,
+        "desc": "单位净值对应的日期。",
+        "ui_type": "DateTime",
+        "property": {"auto_fill": False, "date_formatter": "yyyy/MM/dd"},
+    },
+    {
+        "name": "主理人持有单价",
+        "type": NUMBER_FIELD,
+        "desc": "且慢公开计划中的主理人持有单价。",
+        "property": {"formatter": "0.0000"},
+    },
 ]
 HISTORY_FIELDS = [
-    {"name": "调仓ID", "type": NUMBER_FIELD, "desc": "且慢调仓批次 ID，与基金代码组成历史记录唯一键。"},
+    {
+        "name": "调仓ID",
+        "type": NUMBER_FIELD,
+        "desc": "且慢调仓批次 ID，与基金代码组成历史记录唯一键。",
+        "property": {"formatter": "1,000"},
+    },
     {"name": "基金代码", "type": TEXT_FIELD, "desc": "本条调仓明细对应的基金或投资标的代码。"},
     {"name": "基金名称", "type": TEXT_FIELD, "desc": "本条调仓明细对应的基金名称。"},
-    {"name": "操作类型", "type": TEXT_FIELD, "desc": "买入、卖出或且慢返回的其他操作类型。"},
-    {"name": "品种", "type": TEXT_FIELD, "desc": "且慢调仓记录中的品种名称。"},
-    {"name": "成交净值", "type": NUMBER_FIELD, "desc": "本次买卖对应的成交净值。"},
-    {"name": "净值日期", "type": DATE_FIELD, "desc": "成交净值对应的日期。"},
-    {"name": "交易份数", "type": NUMBER_FIELD, "desc": "本次调仓的交易份数；正数为买入，负数为卖出。"},
-    {"name": "交易日期", "type": DATE_FIELD, "desc": "本次调仓实际发生的日期。"},
+    {
+        "name": "操作类型",
+        "type": SELECT_FIELD,
+        "desc": "买入、卖出或且慢返回的其他操作类型。",
+        "property": {
+            "options": [
+                {"name": "买入", "color": 33},
+                {"name": "卖出", "color": 26},
+            ]
+        },
+    },
+    {
+        # 单选选项由同步数据自动累积，这里不预置。
+        "name": "品种",
+        "type": SELECT_FIELD,
+        "desc": "且慢调仓记录中的品种名称。",
+    },
+    {
+        "name": "成交净值",
+        "type": NUMBER_FIELD,
+        "desc": "本次买卖对应的成交净值。",
+        "property": {"formatter": "0.0000"},
+    },
+    {
+        "name": "净值日期",
+        "type": DATE_FIELD,
+        "desc": "成交净值对应的日期。",
+        "ui_type": "DateTime",
+        "property": {"auto_fill": False, "date_formatter": "yyyy/MM/dd"},
+    },
+    {
+        "name": "交易份数",
+        "type": NUMBER_FIELD,
+        "desc": "本次调仓的交易份数；正数为买入，负数为卖出。",
+        "property": {"formatter": "1,000"},
+    },
+    {
+        "name": "交易日期",
+        "type": DATE_FIELD,
+        "desc": "本次调仓实际发生的日期。",
+        "ui_type": "DateTime",
+        "property": {"auto_fill": False, "date_formatter": "yyyy/MM/dd"},
+    },
 ]
 
 
@@ -591,23 +677,44 @@ class FeishuBitableClient:
             if not data.get("has_more"):
                 return items
 
-    def create_table(self, name: str) -> str:
+    @staticmethod
+    def _field_payload(field: dict[str, Any]) -> dict[str, Any]:
+        """建表/建字段时的完整字段定义；已有字段不会被更新，因此只在这里出现。"""
+        payload: dict[str, Any] = {
+            "field_name": str(field["name"]),
+            "type": int(field["type"]),
+            "description": {"disable_sync": False, "text": str(field["desc"])},
+        }
+        if field.get("ui_type"):
+            payload["ui_type"] = str(field["ui_type"])
+        if field.get("property") is not None:
+            payload["property"] = field["property"]
+        return payload
+
+    def create_table(self, name: str, fields: list[dict[str, Any]]) -> str:
         result = self.request(
             "POST",
             f"/bitable/v1/apps/{self.app_token}/tables",
-            data={"table": {"name": name}},
+            data={
+                "table": {
+                    "name": name,
+                    "fields": [self._field_payload(field) for field in fields],
+                }
+            },
         )
         table_id = result.get("data", {}).get("table_id")
         if not table_id:
             raise RuntimeError(f"飞书创建数据表「{name}」后未返回 table_id")
         return str(table_id)
 
-    def ensure_table(self, name: str, tables: dict[str, str]) -> str:
+    def ensure_table(
+        self, name: str, fields: list[dict[str, Any]], tables: dict[str, str]
+    ) -> str:
         if name in tables:
             log(f"飞书：找到数据表「{name}」（{tables[name]}）")
             return tables[name]
-        log(f"飞书：创建数据表「{name}」")
-        tables[name] = self.create_table(name)
+        log(f"飞书：创建数据表「{name}」，一次带出 {len(fields)} 个字段")
+        tables[name] = self.create_table(name, fields)
         log(f"飞书：已创建数据表「{name}」（{tables[name]}）")
         return tables[name]
 
@@ -621,49 +728,20 @@ class FeishuBitableClient:
             if isinstance(item, dict) and item.get("field_name")
         }
 
-    def ensure_fields(
-        self, table_id: str, expected: list[dict[str, Any]]
-    ) -> tuple[int, int]:
+    def ensure_fields(self, table_id: str, expected: list[dict[str, Any]]) -> int:
+        """只补建缺失字段；已有字段的说明、类型和显示属性一律不读不改。"""
         existing = self.list_fields(table_id)
         added = 0
-        updated = 0
         for field in expected:
-            name = str(field["name"])
-            description = str(field["desc"])
-            payload = {
-                "field_name": name,
-                "type": int(field["type"]),
-                "description": {"disable_sync": False, "text": description},
-            }
-            current = existing.get(name)
-            if current is None:
-                self.request(
-                    "POST",
-                    f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields",
-                    data=payload,
-                )
-                added += 1
+            if str(field["name"]) in existing:
                 continue
-            current_description = current.get("description") or {}
-            current_text = (
-                current_description.get("text", "")
-                if isinstance(current_description, dict)
-                else str(current_description)
-            )
-            if current_text == description:
-                continue
-            field_id = current.get("field_id")
-            if not field_id:
-                raise RuntimeError(f"飞书字段 {name} 缺少 field_id")
-            update_payload = dict(payload)
-            update_payload["type"] = int(current.get("type") or field["type"])
             self.request(
-                "PUT",
-                f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields/{field_id}",
-                data=update_payload,
+                "POST",
+                f"/bitable/v1/apps/{self.app_token}/tables/{table_id}/fields",
+                data=self._field_payload(field),
             )
-            updated += 1
-        return added, updated
+            added += 1
+        return added
 
     def list_records(self, table_id: str) -> list[dict[str, Any]]:
         items: list[dict[str, Any]] = []
@@ -709,14 +787,9 @@ class FeishuBitableClient:
     def sync_report(self, report: dict[str, Any], tables: dict[str, str]) -> str:
         log(f"飞书：开始同步计划「{report['name']}」（{report['code']}）")
         log(f"飞书：[1/2] 同步持仓组合 → 「{report['name']}」")
-        holding_table = self.ensure_table(report["name"], tables)
-        holding_added_fields, holding_updated_fields = self.ensure_fields(
-            holding_table, HOLDING_FIELDS
-        )
-        log(
-            "飞书：持仓表字段已就绪（"
-            f"新增 {holding_added_fields}，更新说明 {holding_updated_fields}）"
-        )
+        holding_table = self.ensure_table(report["name"], HOLDING_FIELDS, tables)
+        holding_added_fields = self.ensure_fields(holding_table, HOLDING_FIELDS)
+        log(f"飞书：持仓表字段已就绪（补建 {holding_added_fields}，已有字段未改动）")
         existing_holdings = {
             str(record.get("fields", {}).get("基金代码")): str(record.get("record_id"))
             for record in self.list_records(holding_table)
@@ -750,14 +823,9 @@ class FeishuBitableClient:
 
         history_name = f"{report['name']}-买卖记录"
         log(f"飞书：[2/2] 增量同步买卖历史 → 「{history_name}」")
-        history_table = self.ensure_table(history_name, tables)
-        history_added_fields, history_updated_fields = self.ensure_fields(
-            history_table, HISTORY_FIELDS
-        )
-        log(
-            "飞书：历史表字段已就绪（"
-            f"新增 {history_added_fields}，更新说明 {history_updated_fields}）"
-        )
+        history_table = self.ensure_table(history_name, HISTORY_FIELDS, tables)
+        history_added_fields = self.ensure_fields(history_table, HISTORY_FIELDS)
+        log(f"飞书：历史表字段已就绪（补建 {history_added_fields}，已有字段未改动）")
         existing_history = {
             (int(_number(fields.get("调仓ID"))), str(fields.get("基金代码")))
             for record in self.list_records(history_table)
