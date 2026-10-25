@@ -1,0 +1,127 @@
+spec_version: "v1"
+id: "qieman-group-sync"
+name: "且慢小组帖子归档"
+version: "1.0.0"
+author: "taotie6"
+category: "投资工具"
+last_commit: "2026-10-24T00:00:00+08:00"
+template:
+  - tag: "QiemanGroupSync"
+  - mise_languages: "python@3.12.11"
+description: "每天 21:30 归档且慢小组帖子与评论：本地 Markdown 与飞书文档双通道，机密变量控制可同开，有新帖才通知。"
+homepage: "https://qieman.com/content/group-detail/43"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: true
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 30 21 * * *"
+  random_range: 300
+  timeout: 30
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    path: "apps/qieman-group-sync/main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c "import requests"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/qieman-group-sync/main/fetch_group_posts.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/qieman-group-sync/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/qieman-group-sync/main/fetch_group_posts.py"
+env_schema:
+  - key: "QIEMAN_GROUP_ID"
+    label: "且慢小组 ID"
+    type: "string"
+    required: false
+    default: "43"
+    description: "要归档的小组数字 ID，默认 43 长赢同路人。"
+  - key: "QIEMAN_GROUP_NAME"
+    label: "小组名称"
+    type: "string"
+    required: false
+    default: "长赢同路人"
+    description: "仅用于日志显示。"
+  - key: "QIEMAN_SAVE_FILES"
+    label: "启用文件通道"
+    type: "string"
+    required: false
+    default: "true"
+    description: "false 时关闭本地 Markdown 输出，仅飞书归档。"
+  - key: "QIEMAN_POSTS_DIR"
+    label: "文件输出目录"
+    type: "string"
+    required: false
+    description: "可选；默认脚本目录下 qieman_posts_<小组ID>，建议指向持久目录。"
+  - key: "FEISHU_APP_ID"
+    label: "飞书应用 App ID"
+    type: "secret"
+    required: false
+    description: "可选；启用飞书文档归档时与 App Secret、文件夹 Token 一起配置。"
+  - key: "FEISHU_APP_SECRET"
+    label: "飞书应用 App Secret"
+    type: "secret"
+    required: false
+    description: "可选；启用飞书文档归档时配置。"
+  - key: "FEISHU_FOLDER_TOKEN"
+    label: "飞书归档根文件夹 Token"
+    type: "secret"
+    required: false
+    description: "可选；归档根目录（如“投资文章”）的文件夹 token，地址栏 fldcn 开头。"
+  - key: "QIEMAN_FEISHU_CATEGORY"
+    label: "飞书二级目录名"
+    type: "string"
+    required: false
+    default: "且慢小组"
+    description: "归档根目录下的二级文件夹名，不存在会自动创建。"
+  - key: "QIEMAN_FEISHU_UPLOAD_IMAGES"
+    label: "上传图片到飞书"
+    type: "string"
+    required: false
+    default: "true"
+    description: "true 时帖内图片以真实图片块写入文档；false 降级为文本链接。"
+  - key: "QIEMAN_BEARER_TOKEN"
+    label: "且慢登录 Token"
+    type: "secret"
+    required: false
+    description: "可选；当前小组接口无需登录，仅当且慢收紧访问策略时配置。"
+sync_rules:
+  defaults:
+    timeout: 30
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/qieman-group-sync/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "sync-group-posts"
+      name: "且慢小组帖子归档"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python fetch_group_posts.py"
+      default_cron: "0 30 21 * * *"
+      enabled: true
+scenarios:
+  - id: "file-only"
+    name: "文件归档"
+    description: "每天 21:30 归档到本地 Markdown，无需任何变量；通知用 NOTIFY_POSTS=1 正则门控。"
+    default: true
+    task_presets:
+      sync-group-posts:
+        enabled: true
+        cron: "0 30 21 * * *"
+  - id: "file-and-feishu"
+    name: "文件 + 飞书文档"
+    description: "配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_FOLDER_TOKEN 后同时归档到飞书文档。"
+    task_presets:
+      sync-group-posts:
+        enabled: true
+        cron: "0 30 21 * * *"

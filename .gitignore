@@ -15,3 +15,5 @@ baihu
 **/.auths.json.tmp
 baihu-credentials.json
 .baihu-credentials.json.tmp
+**/qieman_posts_*/
+**/feishu_index.json

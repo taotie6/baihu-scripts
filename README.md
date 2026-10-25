@@ -19,6 +19,7 @@
 | [aliyundrive-checkin](apps/aliyundrive-checkin/) | **已归档**：领取奖励需要官方客户端 | [app.yaml](apps/aliyundrive-checkin/app.yaml) |
 | [iios-checkin](apps/iios-checkin/) | iios.fun 每日签到，支持单账号与多账号 | [app.yaml](apps/iios-checkin/app.yaml) |
 | [qieman-adjust-alert](apps/qieman-adjust-alert/) | 工作日 14:40 检查且慢顾投计划当日调仓，有更新才通知 | [app.yaml](apps/qieman-adjust-alert/app.yaml) |
+| [qieman-group-sync](apps/qieman-group-sync/) | 且慢小组帖子归档：本地 Markdown 与飞书文档双通道 | [app.yaml](apps/qieman-group-sync/app.yaml) |
 | [qieman-sync](apps/qieman-sync/) | 且慢顾投计划数据整理与推送，可选同步飞书 | [app.yaml](apps/qieman-sync/app.yaml) |
 | [qieman-valuation](apps/qieman-valuation/) | 且慢指数估值与债券收益整理推送，可选同步飞书 | [app.yaml](apps/qieman-valuation/app.yaml) |
 | [qoder-cn-checkin](apps/qoder-cn-checkin/) | Qoder CN 用量汇总与活动权益领取 | [app.yaml](apps/qoder-cn-checkin/app.yaml) |
@@ -80,6 +81,12 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuati
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-adjust-alert/app.yaml
 ```
 
+且慢小组帖子归档远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-group-sync/app.yaml
+```
+
 ## 且慢应用的白虎通知与机密变量
 
 `qieman-sync` 和 `qieman-valuation` 使用白虎任务自带的“通知配置”，
@@ -90,6 +97,11 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-adjust-
 在任务通知配置中用日志变量正则提取（如 `NOTIFY_UPDATE=1`）即可实现“当天有
 调仓才通知”；也可配置 `BHPKG_NOTIFY_TOKEN`、`BHPKG_NOTIFY_CHANNEL` 机密变量
 改由脚本直推。
+
+`qieman-group-sync` 每天 21:30 归档且慢小组帖子：文件通道默认开启，配置
+`FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_FOLDER_TOKEN` 后按
+“投资文章/且慢小组/{博主名}/{日期时间}-{标题}”同步归档为飞书文档，双通道
+可同时开启；日志输出 `NOTIFY_POSTS=1/0` 标记行供通知正则门控。
 
 飞书同步的 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 和 `FEISHU_TABLE_TOKEN` 都是
 白虎机密变量。从 `1.0.2` 更新到 `1.0.3` 时，应在应用配置页重新确认三个值，
@@ -131,6 +143,9 @@ python tools/export_baihu_credentials.py
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── qieman-adjust-alert/
+│   │   ├── app.yaml
+│   │   └── main/
+│   ├── qieman-group-sync/
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── qieman-sync/
