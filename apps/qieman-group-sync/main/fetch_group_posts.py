@@ -545,19 +545,24 @@ class FileSink:
 class FeishuDocsConfig:
     app_id: str
     app_secret: str
-    wiki_token: str
+    table_token: str
     category: str = DEFAULT_FEISHU_CATEGORY
     upload_images: bool = True
     text_limit: int = 9000
     app_id_candidates: tuple[str, ...] = ()
     app_secret_candidates: tuple[str, ...] = ()
+    table_token_candidates: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.table_token_candidates:
+            object.__setattr__(self, "table_token_candidates", (self.table_token,))
 
     @classmethod
     def from_env(cls) -> "FeishuDocsConfig | None":
         values = {
             "FEISHU_APP_ID": _env_candidates(os.environ.get("FEISHU_APP_ID", "")),
             "FEISHU_APP_SECRET": _env_candidates(os.environ.get("FEISHU_APP_SECRET", "")),
-            "FEISHU_WIKI_TOKEN": _env_candidates(os.environ.get("FEISHU_WIKI_TOKEN", "")),
+            "FEISHU_TABLE_TOKEN": _env_candidates(os.environ.get("FEISHU_TABLE_TOKEN", "")),
         }
         configured = [key for key, value in values.items() if value]
         if not configured:
@@ -569,7 +574,7 @@ class FeishuDocsConfig:
         return cls(
             app_id=values["FEISHU_APP_ID"][0],
             app_secret=values["FEISHU_APP_SECRET"][0],
-            wiki_token=values["FEISHU_WIKI_TOKEN"][0],
+            table_token=values["FEISHU_TABLE_TOKEN"][0],
             category=(
                 _first_candidate(
                     os.environ.get("QIEMAN_FEISHU_CATEGORY", ""), DEFAULT_FEISHU_CATEGORY
@@ -580,6 +585,7 @@ class FeishuDocsConfig:
             text_limit=max(500, int(text_limit) if text_limit.isdigit() else 9000),
             app_id_candidates=values["FEISHU_APP_ID"],
             app_secret_candidates=values["FEISHU_APP_SECRET"],
+            table_token_candidates=values["FEISHU_TABLE_TOKEN"],
         )
 
 
@@ -599,7 +605,7 @@ class FeishuDocsClient:
             set(
                 self.config.app_id_candidates
                 + self.config.app_secret_candidates
-                + (self.config.wiki_token,)
+                + self.config.table_token_candidates
             ),
             key=len,
             reverse=True,
@@ -682,16 +688,41 @@ class FeishuDocsClient:
             )
         raise RuntimeError("飞书接口重试次数已用尽")
 
+    def list_spaces(self) -> list[dict[str, Any]]:
+        """列出机器人可见的知识库空间。"""
+        items: list[dict[str, Any]] = []
+        page_token = ""
+        while True:
+            params: dict[str, Any] = {"page_size": 50}
+            if page_token:
+                params["page_token"] = page_token
+            result = self.request("GET", "/wiki/v2/spaces", params=params)
+            data = result.get("data", {})
+            items.extend(
+                item for item in data.get("items") or [] if isinstance(item, dict)
+            )
+            page_token = str(data.get("page_token") or "")
+            if not data.get("has_more"):
+                return items
+
     def resolve_root(self) -> tuple[str, str]:
-        """解析 FEISHU_WIKI_TOKEN：wiki 节点或知识库空间，返回 (space_id, 节点token)。"""
+        """解析归档根：依次尝试 wiki 节点 → 空间 ID → 唯一可见空间自动定位。
+
+        返回 (space_id, 根节点token)；根为空间时节点token 为空串。
+        候选链兼容白虎 `old&new` 合并的同名变量值。
+        """
         if self._root is not None:
             return self._root
-        try:
-            result = self.request(
-                "GET",
-                "/wiki/v2/spaces/get_node",
-                params={"token": self.config.wiki_token, "obj_type": "wiki"},
-            )
+        candidates = self.config.table_token_candidates
+        for token in candidates:
+            try:
+                result = self.request(
+                    "GET",
+                    "/wiki/v2/spaces/get_node",
+                    params={"token": token, "obj_type": "wiki"},
+                )
+            except RuntimeError:
+                continue
             node = (result.get("data") or {}).get("node") or {}
             if node.get("space_id") and node.get("node_token"):
                 log(
@@ -701,12 +732,41 @@ class FeishuDocsClient:
                 )
                 self._root = (str(node["space_id"]), str(node["node_token"]))
                 return self._root
-        except RuntimeError as exc:
-            log(f"飞书：Token 不是知识库节点，尝试按知识库空间解析（{exc}）")
-        self.request("GET", f"/wiki/v2/spaces/{self.config.wiki_token}")
-        log("飞书：根节点为知识库空间（目录建在空间顶层）")
-        self._root = (self.config.wiki_token, "")
-        return self._root
+        for token in candidates:
+            try:
+                self.request("GET", f"/wiki/v2/spaces/{token}")
+            except RuntimeError:
+                continue
+            log("飞书：根节点为知识库空间（目录建在空间顶层）")
+            self._root = (token, "")
+            return self._root
+        # 候选都无法直接定位（例如 qieman-sync 填的多维表格 app_token）：
+        # 按机器人可见的知识库空间自动定位。
+        spaces = self.list_spaces()
+        if len(spaces) == 1:
+            space_id = str(spaces[0].get("space_id") or "")
+            log(
+                "飞书：Token 无法直接定位，已自动选择唯一可见知识库空间"
+                f"「{spaces[0].get('name') or space_id}」，归档树建在其顶层"
+            )
+            self._root = (space_id, "")
+            return self._root
+        names = "、".join(
+            f"「{item.get('name') or item.get('space_id')}」" for item in spaces[:5]
+        )
+        raise RuntimeError(
+            f"FEISHU_TABLE_TOKEN 无法解析为知识库节点或空间"
+            f"（已尝试 {len(candidates)} 个候选值）。"
+            + (
+                f"机器人可见 {len(spaces)} 个知识库空间：{names}；"
+                "请把本应用的 FEISHU_TABLE_TOKEN 填为其中一个空间的 ID"
+                "或归档根节点的 token（wikcn 开头）"
+                if spaces
+                else "机器人没有任何可见知识库空间；请把应用机器人添加为"
+                "目标知识库的可编辑协作者，或将 FEISHU_TABLE_TOKEN 填为"
+                "知识库节点 token（wikcn 开头）或空间 ID"
+            )
+        )
 
     def list_children(self, parent_node_token: str = "") -> list[dict[str, Any]]:
         """列出某 wiki 节点（或空间顶层）的子节点。"""

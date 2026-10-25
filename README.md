@@ -100,10 +100,12 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-group-s
 
 `qieman-group-sync` 每天 21:30 归档且慢小组（`QIEMAN_GROUPS` 可配多个）帖子：
 文件通道默认开启，配置 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、
-`FEISHU_WIKI_TOKEN` 后按
+`FEISHU_TABLE_TOKEN` 后按
 “投资文章/且慢小组/{小组名}/{博主名}/{日期时间}-{标题}”同步归档为飞书
 知识库文档，双通道可同时开启；日志输出 `NOTIFY_POSTS=1/0` 标记行供通知
-正则门控。
+正则门控。`FEISHU_TABLE_TOKEN` 与 qieman-sync 同名，可直接复用其值：
+解析顺序为 wiki 节点 token → 知识库空间 ID → 自动选择机器人唯一可见的
+知识库空间（多个可见空间时报错并列出）。
 
 飞书同步的 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 和 `FEISHU_TABLE_TOKEN` 都是
 白虎机密变量。从 `1.0.2` 更新到 `1.0.3` 时，应在应用配置页重新确认三个值，

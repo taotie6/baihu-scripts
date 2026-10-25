@@ -242,13 +242,13 @@ class FeishuDocsConfigTest(unittest.TestCase):
         values = {
             "FEISHU_APP_ID": "old&new-app",
             "FEISHU_APP_SECRET": "new-secret",
-            "FEISHU_WIKI_TOKEN": "wikcn-root",
+            "FEISHU_TABLE_TOKEN": "wikcn-root",
         }
         with patch.dict(os.environ, values, clear=True):
             config = GROUP.FeishuDocsConfig.from_env()
         assert config
         self.assertEqual(config.app_id, "new-app")
-        self.assertEqual(config.wiki_token, "wikcn-root")
+        self.assertEqual(config.table_token, "wikcn-root")
         self.assertEqual(config.category, "且慢小组")
         self.assertTrue(config.upload_images)
 
@@ -256,7 +256,7 @@ class FeishuDocsConfigTest(unittest.TestCase):
         values = {
             "FEISHU_APP_ID": "app",
             "FEISHU_APP_SECRET": "secret",
-            "FEISHU_WIKI_TOKEN": "wikcn",
+            "FEISHU_TABLE_TOKEN": "wikcn",
             "QIEMAN_FEISHU_UPLOAD_IMAGES": "false",
             "QIEMAN_FEISHU_TEXT_LIMIT": "1500",
         }
@@ -290,6 +290,69 @@ class FeishuDocsClientTest(unittest.TestCase):
 
         with patch.object(client, "request", side_effect=fake_request):
             self.assertEqual(client.resolve_root(), ("wikcn-root", ""))
+
+    def test_resolve_root_tries_token_candidates_in_order(self) -> None:
+        config = GROUP.FeishuDocsConfig(
+            "app", "secret", "bxbc-base", table_token_candidates=("bxbc-base", "wikcn-root")
+        )
+        client = GROUP.FeishuDocsClient(config)
+
+        def fake_request(method: str, endpoint: str, **kwargs) -> dict:
+            if "get_node" in endpoint:
+                if kwargs["params"]["token"] == "wikcn-root":
+                    return {
+                        "code": 0,
+                        "data": {"node": {"space_id": "sp1", "node_token": "wikN", "title": "投资文章"}},
+                    }
+                raise RuntimeError("node not found")
+            raise RuntimeError("space not found")
+
+        with patch.object(client, "request", side_effect=fake_request):
+            self.assertEqual(client.resolve_root(), ("sp1", "wikN"))
+
+    def test_resolve_root_auto_discovers_single_visible_space(self) -> None:
+        client = GROUP.FeishuDocsClient(self._config())
+
+        def fake_request(method: str, endpoint: str, **kwargs) -> dict:
+            raise RuntimeError("not found")
+
+        with patch.object(client, "request", side_effect=fake_request), \
+                patch.object(client, "list_spaces") as list_spaces:
+            list_spaces.return_value = [{"space_id": "sp9", "name": "投资文章"}]
+            self.assertEqual(client.resolve_root(), ("sp9", ""))
+        list_spaces.assert_called_once()
+
+    def test_resolve_root_rejects_when_multiple_spaces_visible(self) -> None:
+        client = GROUP.FeishuDocsClient(self._config())
+        with patch.object(client, "request", side_effect=RuntimeError("not found")), \
+                patch.object(client, "list_spaces") as list_spaces:
+            list_spaces.return_value = [
+                {"space_id": "sp1", "name": "投资文章"},
+                {"space_id": "sp2", "name": "其他空间"},
+            ]
+            with self.assertRaisesRegex(RuntimeError, "可见 2 个知识库空间") as raised:
+                client.resolve_root()
+        self.assertIn("投资文章", str(raised.exception))
+        self.assertIn("其他空间", str(raised.exception))
+
+    def test_resolve_root_rejects_when_no_visible_space(self) -> None:
+        client = GROUP.FeishuDocsClient(self._config())
+        with patch.object(client, "request", side_effect=RuntimeError("not found")), \
+                patch.object(client, "list_spaces", return_value=[]):
+            with self.assertRaisesRegex(RuntimeError, "没有任何可见知识库空间"):
+                client.resolve_root()
+
+    def test_config_builds_token_candidates_from_joined_env(self) -> None:
+        env = {
+            "FEISHU_APP_ID": "app",
+            "FEISHU_APP_SECRET": "secret",
+            "FEISHU_TABLE_TOKEN": "bxbc-base&wikcn-root",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            config = GROUP.FeishuDocsConfig.from_env()
+        assert config
+        self.assertEqual(config.table_token, "wikcn-root")
+        self.assertEqual(config.table_token_candidates, ("wikcn-root", "bxbc-base"))
 
     def test_create_node_posts_wiki_payload(self) -> None:
         client = GROUP.FeishuDocsClient(self._config())
@@ -543,7 +606,7 @@ class MainFlowTest(unittest.TestCase):
             env = {
                 "FEISHU_APP_ID": "app",
                 "FEISHU_APP_SECRET": "secret",
-                "FEISHU_WIKI_TOKEN": "wikcn-root",
+                "FEISHU_TABLE_TOKEN": "wikcn-root",
             }
             with patch.dict(os.environ, env, clear=True), \
                     patch.object(GROUP, "QiemanClient", return_value=self._client(posts)), \

@@ -1,7 +1,7 @@
 spec_version: "v1"
 id: "qieman-group-sync"
 name: "且慢小组帖子归档"
-version: "1.2.0"
+version: "1.3.0"
 author: "taotie6"
 category: "投资工具"
 last_commit: "2026-10-25T00:00:00+08:00"
@@ -66,11 +66,11 @@ env_schema:
     type: "secret"
     required: false
     description: "可选；启用飞书文档归档时配置。"
-  - key: "FEISHU_WIKI_TOKEN"
+  - key: "FEISHU_TABLE_TOKEN"
     label: "飞书知识库 Token"
     type: "secret"
     required: false
-    description: "可选；知识库节点 token（wikcn 开头）或知识库空间 ID，归档目录建在其下。"
+    description: "可选；与 qieman-sync 同名变量，直接复用其值即可。优先按知识库节点 token（wikcn）或空间 ID 解析；否则自动选择机器人唯一可见的知识库空间，多个空间时报错并列出。"
   - key: "QIEMAN_FEISHU_CATEGORY"
     label: "飞书二级目录名"
     type: "string"
@@ -114,7 +114,7 @@ scenarios:
         cron: "0 30 21 * * *"
   - id: "file-and-feishu"
     name: "文件 + 飞书文档"
-    description: "配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_WIKI_TOKEN 后同时归档到飞书知识库文档。"
+    description: "配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_TABLE_TOKEN 后同时归档到飞书知识库文档。"
     task_presets:
       sync-group-posts:
         enabled: true
