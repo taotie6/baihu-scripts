@@ -98,10 +98,12 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-group-s
 调仓才通知”；也可配置 `BHPKG_NOTIFY_TOKEN`、`BHPKG_NOTIFY_CHANNEL` 机密变量
 改由脚本直推。
 
-`qieman-group-sync` 每天 21:30 归档且慢小组帖子：文件通道默认开启，配置
-`FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_FOLDER_TOKEN` 后按
-“投资文章/且慢小组/{博主名}/{日期时间}-{标题}”同步归档为飞书文档，双通道
-可同时开启；日志输出 `NOTIFY_POSTS=1/0` 标记行供通知正则门控。
+`qieman-group-sync` 每天 21:30 归档且慢小组（`QIEMAN_GROUPS` 可配多个）帖子：
+文件通道默认开启，配置 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、
+`FEISHU_WIKI_TOKEN` 后按
+“投资文章/且慢小组/{小组名}/{博主名}/{日期时间}-{标题}”同步归档为飞书
+知识库文档，双通道可同时开启；日志输出 `NOTIFY_POSTS=1/0` 标记行供通知
+正则门控。
 
 飞书同步的 `FEISHU_APP_ID`、`FEISHU_APP_SECRET` 和 `FEISHU_TABLE_TOKEN` 都是
 白虎机密变量。从 `1.0.2` 更新到 `1.0.3` 时，应在应用配置页重新确认三个值，

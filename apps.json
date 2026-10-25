@@ -1,9 +1,9 @@
 {
   "version": "v1",
   "branch": "main",
-  "generated_at": "2026-10-23T16:00:00Z",
-  "generated_at_utc8": "2026-10-24 00:00:00",
-  "build_time": "2026-10-24 00:00:00",
+  "generated_at": "2026-10-24T16:00:00Z",
+  "generated_at_utc8": "2026-10-25 00:00:00",
+  "build_time": "2026-10-25 00:00:00",
   "total_apps": 10,
   "apps": [
     {
@@ -293,11 +293,11 @@
       "spec_version": "v1",
       "id": "qieman-group-sync",
       "name": "且慢小组帖子归档",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "author": "taotie6",
       "category": "投资工具",
-      "last_commit": "2026-10-24T00:00:00+08:00",
-      "description": "每天 21:30 归档且慢小组帖子与评论：本地 Markdown 与飞书文档双通道，机密变量控制可同开，有新帖才通知。",
+      "last_commit": "2026-10-25T00:00:00+08:00",
+      "description": "每天 21:30 归档且慢小组（QIEMAN_GROUPS 可配多个）帖子与评论：本地 Markdown 与飞书文档双通道，机密变量控制可同开，有新帖才通知。",
       "homepage": "https://qieman.com/content/group-detail/43",
       "build_opts": {
         "force_setup": false,
@@ -335,20 +335,12 @@
       "tasks_count": 1,
       "env_schema": [
         {
-          "key": "QIEMAN_GROUP_ID",
-          "label": "且慢小组 ID",
+          "key": "QIEMAN_GROUPS",
+          "label": "且慢小组列表",
           "type": "string",
           "required": false,
-          "default": "43",
-          "description": "要归档的小组数字 ID，默认 43 长赢同路人。"
-        },
-        {
-          "key": "QIEMAN_GROUP_NAME",
-          "label": "小组名称",
-          "type": "string",
-          "required": false,
-          "default": "长赢同路人",
-          "description": "仅用于日志显示。"
+          "default": "43:长赢同路人",
+          "description": "逗号分隔的 小组ID:名称，如 43:长赢同路人,58:其他小组；各小组目录与索引独立。"
         },
         {
           "key": "QIEMAN_SAVE_FILES",
@@ -370,7 +362,7 @@
           "label": "飞书应用 App ID",
           "type": "secret",
           "required": false,
-          "description": "可选；启用飞书文档归档时与 App Secret、文件夹 Token 一起配置。"
+          "description": "可选；启用飞书文档归档时与 App Secret、知识库 Token 一起配置。"
         },
         {
           "key": "FEISHU_APP_SECRET",
@@ -380,11 +372,11 @@
           "description": "可选；启用飞书文档归档时配置。"
         },
         {
-          "key": "FEISHU_FOLDER_TOKEN",
-          "label": "飞书归档根文件夹 Token",
+          "key": "FEISHU_WIKI_TOKEN",
+          "label": "飞书知识库 Token",
           "type": "secret",
           "required": false,
-          "description": "可选；归档根目录（如“投资文章”）的文件夹 token，地址栏 fldcn 开头。"
+          "description": "可选；知识库节点 token（wikcn 开头）或知识库空间 ID，归档目录建在其下。"
         },
         {
           "key": "QIEMAN_FEISHU_CATEGORY",
@@ -392,7 +384,7 @@
           "type": "string",
           "required": false,
           "default": "且慢小组",
-          "description": "归档根目录下的二级文件夹名，不存在会自动创建。"
+          "description": "知识库中归档树的二级节点名，不存在会自动创建。"
         },
         {
           "key": "QIEMAN_FEISHU_UPLOAD_IMAGES",
@@ -426,7 +418,7 @@
         {
           "id": "file-and-feishu",
           "name": "文件 + 飞书文档",
-          "description": "配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_FOLDER_TOKEN 后同时归档到飞书文档。",
+          "description": "配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_WIKI_TOKEN 后同时归档到飞书知识库文档。",
           "task_presets": {
             "sync-group-posts": {
               "enabled": true,
@@ -438,9 +430,9 @@
       "scenarios_count": 2,
       "app_dir": "qieman-group-sync",
       "manifest_path": "apps/qieman-group-sync/app.yaml",
-      "manifest_raw": "spec_version: \"v1\"\nid: \"qieman-group-sync\"\nname: \"且慢小组帖子归档\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"投资工具\"\nlast_commit: \"2026-10-24T00:00:00+08:00\"\ntemplate:\n  - tag: \"QiemanGroupSync\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"每天 21:30 归档且慢小组帖子与评论：本地 Markdown 与飞书文档双通道，机密变量控制可同开，有新帖才通知。\"\nhomepage: \"https://qieman.com/content/group-detail/43\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: true\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 30 21 * * *\"\n  random_range: 300\n  timeout: 30\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    path: \"apps/qieman-group-sync/main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qieman-group-sync/main/fetch_group_posts.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qieman-group-sync/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qieman-group-sync/main/fetch_group_posts.py\"\nenv_schema:\n  - key: \"QIEMAN_GROUP_ID\"\n    label: \"且慢小组 ID\"\n    type: \"string\"\n    required: false\n    default: \"43\"\n    description: \"要归档的小组数字 ID，默认 43 长赢同路人。\"\n  - key: \"QIEMAN_GROUP_NAME\"\n    label: \"小组名称\"\n    type: \"string\"\n    required: false\n    default: \"长赢同路人\"\n    description: \"仅用于日志显示。\"\n  - key: \"QIEMAN_SAVE_FILES\"\n    label: \"启用文件通道\"\n    type: \"string\"\n    required: false\n    default: \"true\"\n    description: \"false 时关闭本地 Markdown 输出，仅飞书归档。\"\n  - key: \"QIEMAN_POSTS_DIR\"\n    label: \"文件输出目录\"\n    type: \"string\"\n    required: false\n    description: \"可选；默认脚本目录下 qieman_posts_<小组ID>，建议指向持久目录。\"\n  - key: \"FEISHU_APP_ID\"\n    label: \"飞书应用 App ID\"\n    type: \"secret\"\n    required: false\n    description: \"可选；启用飞书文档归档时与 App Secret、文件夹 Token 一起配置。\"\n  - key: \"FEISHU_APP_SECRET\"\n    label: \"飞书应用 App Secret\"\n    type: \"secret\"\n    required: false\n    description: \"可选；启用飞书文档归档时配置。\"\n  - key: \"FEISHU_FOLDER_TOKEN\"\n    label: \"飞书归档根文件夹 Token\"\n    type: \"secret\"\n    required: false\n    description: \"可选；归档根目录（如“投资文章”）的文件夹 token，地址栏 fldcn 开头。\"\n  - key: \"QIEMAN_FEISHU_CATEGORY\"\n    label: \"飞书二级目录名\"\n    type: \"string\"\n    required: false\n    default: \"且慢小组\"\n    description: \"归档根目录下的二级文件夹名，不存在会自动创建。\"\n  - key: \"QIEMAN_FEISHU_UPLOAD_IMAGES\"\n    label: \"上传图片到飞书\"\n    type: \"string\"\n    required: false\n    default: \"true\"\n    description: \"true 时帖内图片以真实图片块写入文档；false 降级为文本链接。\"\n  - key: \"QIEMAN_BEARER_TOKEN\"\n    label: \"且慢登录 Token\"\n    type: \"secret\"\n    required: false\n    description: \"可选；当前小组接口无需登录，仅当且慢收紧访问策略时配置。\"\nsync_rules:\n  defaults:\n    timeout: 30\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qieman-group-sync/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"sync-group-posts\"\n      name: \"且慢小组帖子归档\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python fetch_group_posts.py\"\n      default_cron: \"0 30 21 * * *\"\n      enabled: true\nscenarios:\n  - id: \"file-only\"\n    name: \"文件归档\"\n    description: \"每天 21:30 归档到本地 Markdown，无需任何变量；通知用 NOTIFY_POSTS=1 正则门控。\"\n    default: true\n    task_presets:\n      sync-group-posts:\n        enabled: true\n        cron: \"0 30 21 * * *\"\n  - id: \"file-and-feishu\"\n    name: \"文件 + 飞书文档\"\n    description: \"配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_FOLDER_TOKEN 后同时归档到飞书文档。\"\n    task_presets:\n      sync-group-posts:\n        enabled: true\n        cron: \"0 30 21 * * *\"\n",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"qieman-group-sync\"\nname: \"且慢小组帖子归档\"\nversion: \"1.2.0\"\nauthor: \"taotie6\"\ncategory: \"投资工具\"\nlast_commit: \"2026-10-25T00:00:00+08:00\"\ntemplate:\n  - tag: \"QiemanGroupSync\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"每天 21:30 归档且慢小组（QIEMAN_GROUPS 可配多个）帖子与评论：本地 Markdown 与飞书文档双通道，机密变量控制可同开，有新帖才通知。\"\nhomepage: \"https://qieman.com/content/group-detail/43\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: true\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 30 21 * * *\"\n  random_range: 300\n  timeout: 30\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    path: \"apps/qieman-group-sync/main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/qieman-group-sync/main/fetch_group_posts.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/qieman-group-sync/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/qieman-group-sync/main/fetch_group_posts.py\"\nenv_schema:\n  - key: \"QIEMAN_GROUPS\"\n    label: \"且慢小组列表\"\n    type: \"string\"\n    required: false\n    default: \"43:长赢同路人\"\n    description: \"逗号分隔的 小组ID:名称，如 43:长赢同路人,58:其他小组；各小组目录与索引独立。\"\n  - key: \"QIEMAN_SAVE_FILES\"\n    label: \"启用文件通道\"\n    type: \"string\"\n    required: false\n    default: \"true\"\n    description: \"false 时关闭本地 Markdown 输出，仅飞书归档。\"\n  - key: \"QIEMAN_POSTS_DIR\"\n    label: \"文件输出目录\"\n    type: \"string\"\n    required: false\n    description: \"可选；默认脚本目录下 qieman_posts_<小组ID>，建议指向持久目录。\"\n  - key: \"FEISHU_APP_ID\"\n    label: \"飞书应用 App ID\"\n    type: \"secret\"\n    required: false\n    description: \"可选；启用飞书文档归档时与 App Secret、知识库 Token 一起配置。\"\n  - key: \"FEISHU_APP_SECRET\"\n    label: \"飞书应用 App Secret\"\n    type: \"secret\"\n    required: false\n    description: \"可选；启用飞书文档归档时配置。\"\n  - key: \"FEISHU_WIKI_TOKEN\"\n    label: \"飞书知识库 Token\"\n    type: \"secret\"\n    required: false\n    description: \"可选；知识库节点 token（wikcn 开头）或知识库空间 ID，归档目录建在其下。\"\n  - key: \"QIEMAN_FEISHU_CATEGORY\"\n    label: \"飞书二级目录名\"\n    type: \"string\"\n    required: false\n    default: \"且慢小组\"\n    description: \"知识库中归档树的二级节点名，不存在会自动创建。\"\n  - key: \"QIEMAN_FEISHU_UPLOAD_IMAGES\"\n    label: \"上传图片到飞书\"\n    type: \"string\"\n    required: false\n    default: \"true\"\n    description: \"true 时帖内图片以真实图片块写入文档；false 降级为文本链接。\"\n  - key: \"QIEMAN_BEARER_TOKEN\"\n    label: \"且慢登录 Token\"\n    type: \"secret\"\n    required: false\n    description: \"可选；当前小组接口无需登录，仅当且慢收紧访问策略时配置。\"\nsync_rules:\n  defaults:\n    timeout: 30\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/qieman-group-sync/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"sync-group-posts\"\n      name: \"且慢小组帖子归档\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python fetch_group_posts.py\"\n      default_cron: \"0 30 21 * * *\"\n      enabled: true\nscenarios:\n  - id: \"file-only\"\n    name: \"文件归档\"\n    description: \"每天 21:30 归档到本地 Markdown，无需任何变量；通知用 NOTIFY_POSTS=1 正则门控。\"\n    default: true\n    task_presets:\n      sync-group-posts:\n        enabled: true\n        cron: \"0 30 21 * * *\"\n  - id: \"file-and-feishu\"\n    name: \"文件 + 飞书文档\"\n    description: \"配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_WIKI_TOKEN 后同时归档到飞书知识库文档。\"\n    task_presets:\n      sync-group-posts:\n        enabled: true\n        cron: \"0 30 21 * * *\"\n",
       "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-group-sync/app.yaml",
-      "updated_at": "2026-10-24 00:00:00"
+      "updated_at": "2026-10-25 00:00:00"
     },
     {
       "spec_version": "v1",

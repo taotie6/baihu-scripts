@@ -193,6 +193,41 @@ class FileSinkTest(unittest.TestCase):
             self.assertEqual(sink.existing_ids(), {93181})
 
 
+class ParseGroupsTest(unittest.TestCase):
+    def test_default_group(self) -> None:
+        self.assertEqual(GROUP.parse_groups(""), [(43, "长赢同路人")])
+
+    def test_multiple_groups(self) -> None:
+        self.assertEqual(
+            GROUP.parse_groups("43:长赢同路人, 58:其他小组"),
+            [(43, "长赢同路人"), (58, "其他小组")],
+        )
+
+    def test_name_defaults_to_id(self) -> None:
+        self.assertEqual(GROUP.parse_groups("58"), [(58, "58")])
+
+    def test_rejects_invalid_or_duplicate(self) -> None:
+        with self.assertRaisesRegex(ValueError, "必须是数字"):
+            GROUP.parse_groups("abc:小组")
+        with self.assertRaisesRegex(ValueError, "缺少小组名称"):
+            GROUP.parse_groups("43:")
+        with self.assertRaisesRegex(ValueError, "重复小组 ID"):
+            GROUP.parse_groups("43:A,43:B")
+
+    def test_groups_arg_overrides_env(self) -> None:
+        with patch.dict(os.environ, {"QIEMAN_GROUPS": "43:环境小组"}, clear=True):
+            self.assertEqual(
+                GROUP.groups_from_env_and_args("58:参数小组"), [(58, "参数小组")]
+            )
+            self.assertEqual(
+                GROUP.groups_from_env_and_args(""), [(43, "环境小组")]
+            )
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                GROUP.groups_from_env_and_args(""), [(43, "长赢同路人")]
+            )
+
+
 class FeishuDocsConfigTest(unittest.TestCase):
     def test_not_configured_returns_none(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -207,13 +242,13 @@ class FeishuDocsConfigTest(unittest.TestCase):
         values = {
             "FEISHU_APP_ID": "old&new-app",
             "FEISHU_APP_SECRET": "new-secret",
-            "FEISHU_FOLDER_TOKEN": "fld-root",
+            "FEISHU_WIKI_TOKEN": "wikcn-root",
         }
         with patch.dict(os.environ, values, clear=True):
             config = GROUP.FeishuDocsConfig.from_env()
         assert config
         self.assertEqual(config.app_id, "new-app")
-        self.assertEqual(config.folder_token, "fld-root")
+        self.assertEqual(config.wiki_token, "wikcn-root")
         self.assertEqual(config.category, "且慢小组")
         self.assertTrue(config.upload_images)
 
@@ -221,7 +256,7 @@ class FeishuDocsConfigTest(unittest.TestCase):
         values = {
             "FEISHU_APP_ID": "app",
             "FEISHU_APP_SECRET": "secret",
-            "FEISHU_FOLDER_TOKEN": "fld",
+            "FEISHU_WIKI_TOKEN": "wikcn",
             "QIEMAN_FEISHU_UPLOAD_IMAGES": "false",
             "QIEMAN_FEISHU_TEXT_LIMIT": "1500",
         }
@@ -230,6 +265,59 @@ class FeishuDocsConfigTest(unittest.TestCase):
         assert config
         self.assertFalse(config.upload_images)
         self.assertEqual(config.text_limit, 1500)
+
+
+class FeishuDocsClientTest(unittest.TestCase):
+    def _config(self) -> GROUP.FeishuDocsConfig:
+        return GROUP.FeishuDocsConfig("app", "secret", "wikcn-root")
+
+    def test_resolve_root_prefers_node_token(self) -> None:
+        client = GROUP.FeishuDocsClient(self._config())
+        with patch.object(client, "request") as request:
+            request.return_value = {
+                "code": 0,
+                "data": {"node": {"space_id": "sp1", "node_token": "wikN", "title": "投资文章"}},
+            }
+            self.assertEqual(client.resolve_root(), ("sp1", "wikN"))
+
+    def test_resolve_root_falls_back_to_space(self) -> None:
+        client = GROUP.FeishuDocsClient(self._config())
+
+        def fake_request(method: str, endpoint: str, **kwargs) -> dict:
+            if "get_node" in endpoint:
+                raise RuntimeError("node not found")
+            return {"code": 0, "data": {}}
+
+        with patch.object(client, "request", side_effect=fake_request):
+            self.assertEqual(client.resolve_root(), ("wikcn-root", ""))
+
+    def test_create_node_posts_wiki_payload(self) -> None:
+        client = GROUP.FeishuDocsClient(self._config())
+        client._root = ("sp1", "wikN")
+        with patch.object(client, "request") as request:
+            request.return_value = {
+                "code": 0,
+                "data": {"node": {"node_token": "wikNew", "obj_token": "doxcnNew"}},
+            }
+            created = client.create_node("wikN", "标题")
+        _, kwargs = request.call_args
+        self.assertEqual(
+            kwargs["data"],
+            {"obj_type": "docx", "title": "标题", "parent_node_token": "wikN"},
+        )
+        self.assertEqual(created, {"node_token": "wikNew", "obj_token": "doxcnNew"})
+
+    def test_list_children_paginates(self) -> None:
+        client = GROUP.FeishuDocsClient(self._config())
+        client._root = ("sp1", "wikN")
+        pages = [
+            {"code": 0, "data": {"items": [{"node_token": "a", "title": "A"}], "has_more": True, "page_token": "p2"}},
+            {"code": 0, "data": {"items": [{"node_token": "b", "title": "B"}], "has_more": False}},
+        ]
+        with patch.object(client, "request", side_effect=pages) as request:
+            items = client.list_children("wikN")
+        self.assertEqual([item["title"] for item in items], ["A", "B"])
+        self.assertEqual(request.call_count, 2)
 
 
 class BlockBuilderTest(unittest.TestCase):
@@ -246,71 +334,79 @@ class BlockBuilderTest(unittest.TestCase):
 
 class FeishuIndexTest(unittest.TestCase):
     def _index(self, tmp: str) -> GROUP.FeishuIndex:
-        index = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index.json"))
-        index.category_folder_id = "fld-cat"
-        index.authors = {"ETF拯救世界": "fld-a"}
-        index.posts = {"93181": {"doc_id": "doccn1", "author": "ETF拯救世界", "title": "t"}}
+        index = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index_43.json"))
+        index.category_node_token = "nd-cat"
+        index.group_node_token = "nd-g"
+        index.authors = {"ETF拯救世界": "nd-a"}
+        index.posts = {"93181": {"node_token": "wik1", "doc_id": "doccn1", "author": "ETF拯救世界", "title": "t"}}
         return index
 
     def test_save_load_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self._index(tmp).save()
-            loaded = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index.json"))
+            loaded = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index_43.json"))
             loaded.load()
             self.assertEqual(loaded.recorded_ids(), {93181})
-            self.assertEqual(loaded.authors["ETF拯救世界"], "fld-a")
+            self.assertEqual(loaded.authors["ETF拯救世界"], "nd-a")
+            self.assertEqual(loaded.group_node_token, "nd-g")
 
     def test_corrupted_file_is_treated_as_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "feishu_index.json")
+            path = os.path.join(tmp, "feishu_index_43.json")
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("{broken")
             index = GROUP.FeishuIndex(path)
             index.load()
             self.assertEqual(index.recorded_ids(), set())
 
-    def test_rebuild_matches_documents_by_deterministic_title(self) -> None:
+    def test_rebuild_scans_under_group_node(self) -> None:
         report = GROUP.organise_post(raw_post())
         client = MagicMock()
-        client.config = GROUP.FeishuDocsConfig("app", "secret", "fld-root")
-        client.ensure_folder.return_value = "fld-cat"
+        client.config = GROUP.FeishuDocsConfig("app", "secret", "wikcn-root")
+        client.resolve_root.return_value = ("sp1", "nd-root")
+        client.ensure_node.side_effect = lambda parent, name: {
+            "且慢小组": "nd-cat",
+            "长赢同路人": "nd-g",
+        }[name]
         client.list_children.side_effect = lambda token: (
-            [{"type": "folder", "name": "ETF拯救世界", "token": "fld-a"}]
-            if token == "fld-cat"
-            else [{"name": GROUP.doc_title(report), "token": "doccn9"}]
+            [{"title": "ETF拯救世界", "node_token": "nd-a"}]
+            if token == "nd-g"
+            else [{"title": GROUP.doc_title(report), "node_token": "wik9"}]
         )
-        index = GROUP.FeishuIndex("/nonexistent/feishu_index.json")
-        index.rebuild(client, [report])
+        index = GROUP.FeishuIndex("/nonexistent/feishu_index_43.json")
+        index.rebuild(client, [report], "长赢同路人")
         self.assertEqual(index.recorded_ids(), {93181})
-        self.assertEqual(index.posts["93181"]["doc_id"], "doccn9")
+        self.assertEqual(index.posts["93181"]["node_token"], "wik9")
+        self.assertEqual(index.group_node_token, "nd-g")
 
 
 class FeishuSinkTest(unittest.TestCase):
     def _sink(self, tmp: str, upload_images: bool = False) -> tuple[GROUP.FeishuSink, MagicMock]:
         config = GROUP.FeishuDocsConfig(
-            "app", "secret", "fld-root", upload_images=upload_images
+            "app", "secret", "wikcn-root", upload_images=upload_images
         )
         client = MagicMock()
         client.config = config
-        client.create_document.return_value = "doccn1"
+        client.create_node.return_value = {"node_token": "wikPost", "obj_token": "doccn1"}
         client.upload_image.return_value = "ftoken"
-        index = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index.json"))
-        index.category_folder_id = "fld-cat"
-        index.authors = {"ETF拯救世界": "fld-a"}
-        return GROUP.FeishuSink(client, index), client
+        index = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index_43.json"))
+        index.category_node_token = "nd-cat"
+        index.group_node_token = "nd-g"
+        index.authors = {"ETF拯救世界": "nd-a"}
+        return GROUP.FeishuSink(client, index, "长赢同路人"), client
 
     def test_save_writes_blocks_and_updates_index(self) -> None:
         report = GROUP.organise_post(raw_post())
         comments = [GROUP.organise_comment(raw_comment(), [])]
         with tempfile.TemporaryDirectory() as tmp:
             sink, client = self._sink(tmp)
-            doc_id = sink.save(report, comments)
+            node_token = sink.save(report, comments)
             index_saved = os.path.exists(sink.index.path)
         self.assertTrue(index_saved)
-        self.assertEqual(doc_id, "doccn1")
-        client.create_document.assert_called_once_with(
-            GROUP.doc_title(report), "fld-a"
-        )
+        self.assertEqual(node_token, "wikPost")
+        client.create_node.assert_called_once_with("nd-a", GROUP.doc_title(report))
+        document_id = client.append_blocks.call_args[0][0]
+        self.assertEqual(document_id, "doccn1")
         blocks = client.append_blocks.call_args[0][1]
         self.assertEqual(blocks[0]["block_type"], 4)
         self.assertEqual(blocks[1]["text"]["elements"][0]["text_run"]["content"], "原文链接")
@@ -321,6 +417,7 @@ class FeishuSinkTest(unittest.TestCase):
         self.assertEqual(blocks[5]["block_type"], 5)  # ### 评论
         self.assertIn("路人甲：说得好", blocks[6]["bullet"]["elements"][0]["text_run"]["content"])
         self.assertEqual(sink.index.recorded_ids(), {93181})
+        self.assertEqual(sink.index.posts["93181"]["node_token"], "wikPost")
 
     def test_save_uploads_images_when_enabled(self) -> None:
         report = GROUP.organise_post(raw_post())
@@ -338,25 +435,30 @@ class FeishuSinkTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             sink, client = self._sink(tmp, upload_images=True)
             client.upload_image.side_effect = RuntimeError("too large")
-            doc_id = sink.save(report, [])
-        self.assertEqual(doc_id, "doccn1")
+            node_token = sink.save(report, [])
+        self.assertEqual(node_token, "wikPost")
         blocks = client.append_blocks.call_args[0][1]
         self.assertFalse(any(b["block_type"] == 27 for b in blocks))
         self.assertTrue(any("🖼" in str(b) for b in blocks))
 
-    def test_new_author_folder_is_created(self) -> None:
+    def test_new_author_node_is_created_under_group(self) -> None:
         report = GROUP.organise_post(raw_post(author="新博主"))
         with tempfile.TemporaryDirectory() as tmp:
             sink, client = self._sink(tmp)
-            sink.index.category_folder_id = ""  # 迫使二级目录也走创建逻辑
-            client.ensure_folder.side_effect = lambda parent, name: (
-                "fld-cat" if name == "且慢小组" else "fld-new"
-            )
+            sink.index.category_node_token = ""  # 迫使完整节点链走创建逻辑
+            sink.index.group_node_token = ""
+            client.resolve_root.return_value = ("sp1", "nd-root")
+            client.ensure_node.side_effect = lambda parent, name: {
+                "且慢小组": "nd-cat",
+                "长赢同路人": "nd-g",
+                "新博主": "nd-new",
+            }[name]
             sink.save(report, [])
-        client.ensure_folder.assert_any_call("fld-root", "且慢小组")
-        client.ensure_folder.assert_any_call("fld-cat", "新博主")
-        self.assertEqual(sink.index.authors["新博主"], "fld-new")
-        self.assertEqual(sink.index.category_folder_id, "fld-cat")
+        client.ensure_node.assert_any_call("nd-root", "且慢小组")
+        client.ensure_node.assert_any_call("nd-cat", "长赢同路人")
+        client.ensure_node.assert_any_call("nd-g", "新博主")
+        self.assertEqual(sink.index.authors["新博主"], "nd-new")
+        self.assertEqual(sink.index.group_node_token, "nd-g")
 
 
 class MarkerTest(unittest.TestCase):
@@ -364,14 +466,23 @@ class MarkerTest(unittest.TestCase):
         self.assertEqual(GROUP.render_marker([]), "NOTIFY_POSTS=0 今日无新帖")
 
     def test_marker_lists_authors_and_titles(self) -> None:
-        pending = [
-            (GROUP.organise_post(raw_post(post_id=i, title=f"标题{i}")), True, True)
+        archived = [
+            {"group": "长赢同路人", "report": GROUP.organise_post(raw_post(post_id=i, title=f"标题{i}"))}
             for i in (1, 2, 3, 4, 5)
         ]
-        marker = GROUP.render_marker(pending)
+        marker = GROUP.render_marker(archived)
         self.assertTrue(marker.startswith("NOTIFY_POSTS=1 新帖 5 篇："))
         self.assertIn("等 5 篇", marker)
         self.assertLessEqual(len(marker), 121)
+
+    def test_marker_adds_group_label_when_multiple_groups(self) -> None:
+        archived = [
+            {"group": "小组A", "report": GROUP.organise_post(raw_post(title="标题A"))},
+            {"group": "小组B", "report": GROUP.organise_post(raw_post(title="标题B"))},
+        ]
+        marker = GROUP.render_marker(archived, multi_group=True)
+        self.assertIn("[小组A]ETF拯救世界《标题A》", marker)
+        self.assertIn("[小组B]ETF拯救世界《标题B》", marker)
 
 
 class MainFlowTest(unittest.TestCase):
@@ -397,17 +508,18 @@ class MainFlowTest(unittest.TestCase):
     def test_file_channel_run_and_incremental(self) -> None:
         posts = [raw_post(post_id=101), raw_post(post_id=102, title="旧帖", created="2026-10-20T10:00:00")]
         with tempfile.TemporaryDirectory() as tmp:
-            posts_dir = os.path.join(tmp, "posts")
+            base = os.path.join(tmp, "posts")
+            group_dir = os.path.join(base, "qieman_posts_43")
             with patch.dict(os.environ, {}, clear=True), \
                     patch.object(GROUP, "QiemanClient", return_value=self._client(posts)):
-                code, output = self.run_main("--posts-dir", posts_dir, "--group-id", "43")
+                code, output = self.run_main("--posts-dir", base)
             self.assertEqual(code, 0)
             self.assertIn("NOTIFY_POSTS=1 新帖 2 篇", output)
-            self.assertEqual(len(os.listdir(posts_dir)), 2)
+            self.assertEqual(len(os.listdir(group_dir)), 2)
 
             with patch.dict(os.environ, {}, clear=True), \
                     patch.object(GROUP, "QiemanClient", return_value=self._client(posts)):
-                code, output = self.run_main("--posts-dir", posts_dir, "--group-id", "43")
+                code, output = self.run_main("--posts-dir", base)
             self.assertEqual(code, 0)
             self.assertIn("NOTIFY_POSTS=0 今日无新帖", output)
             self.assertIn("文件：新增 0、失败 0", output)
@@ -415,23 +527,29 @@ class MainFlowTest(unittest.TestCase):
     def test_feishu_backfills_post_missing_only_in_feishu(self) -> None:
         posts = [raw_post(post_id=101)]
         with tempfile.TemporaryDirectory() as tmp:
-            posts_dir = os.path.join(tmp, "posts")
-            GROUP.FileSink(posts_dir).save(GROUP.organise_post(posts[0]), [])
-            index = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index.json"))
+            base = os.path.join(tmp, "posts")
+            GROUP.FileSink(os.path.join(base, "qieman_posts_43")).save(
+                GROUP.organise_post(posts[0]), []
+            )
             sink_client = MagicMock()
-            sink_client.config = GROUP.FeishuDocsConfig("app", "secret", "fld-root")
-            sink_client.ensure_folder.return_value = "fld-cat"
-            sink_client.create_document.return_value = "doccn1"
+            sink_client.config = GROUP.FeishuDocsConfig("app", "secret", "wikcn-root")
+            sink_client.resolve_root.return_value = ("sp1", "nd-root")
+            sink_client.ensure_node.side_effect = lambda parent, name: {
+                "且慢小组": "nd-cat",
+                "长赢同路人": "nd-g",
+                "ETF拯救世界": "nd-a",
+            }[name]
+            sink_client.create_node.return_value = {"node_token": "wikPost", "obj_token": "doccn1"}
             env = {
                 "FEISHU_APP_ID": "app",
                 "FEISHU_APP_SECRET": "secret",
-                "FEISHU_FOLDER_TOKEN": "fld-root",
+                "FEISHU_WIKI_TOKEN": "wikcn-root",
             }
             with patch.dict(os.environ, env, clear=True), \
                     patch.object(GROUP, "QiemanClient", return_value=self._client(posts)), \
                     patch.object(GROUP, "FeishuDocsClient", return_value=sink_client), \
                     patch.object(GROUP.FeishuIndex, "rebuild"):
-                code, output = self.run_main("--posts-dir", posts_dir)
+                code, output = self.run_main("--posts-dir", base)
             self.assertEqual(code, 0)
             self.assertIn("文件：新增 0、失败 0", output)
             self.assertIn("飞书：新增 1、失败 0", output)
@@ -449,26 +567,49 @@ class MainFlowTest(unittest.TestCase):
             code, output = self.run_main("--posts-dir", os.path.join(tmp, "posts"))
         self.assertEqual(code, 2)
 
-    def test_group_configured_by_environment(self) -> None:
+    def test_groups_configured_by_environment(self) -> None:
         posts = [raw_post(post_id=101)]
-        env = {"QIEMAN_GROUP_ID": "99", "QIEMAN_GROUP_NAME": "测试小组"}
+        env = {"QIEMAN_GROUPS": "99:测试小组"}
         with tempfile.TemporaryDirectory() as tmp, \
                 patch.dict(os.environ, env, clear=True), \
                 patch.object(GROUP, "QiemanClient", return_value=self._client(posts)) as factory:
             code, output = self.run_main("--posts-dir", os.path.join(tmp, "posts"))
+            group_dir_exists = os.path.exists(
+                os.path.join(tmp, "posts", "qieman_posts_99")
+            )
         self.assertEqual(code, 0)
         self.assertIn("开始归档且慢小组 99（测试小组）", output)
         factory.return_value.fetch_all_posts.assert_called_once_with(99)
+        self.assertTrue(group_dir_exists)
 
-    def test_invalid_group_id_falls_back_with_warning(self) -> None:
-        posts = [raw_post(post_id=101)]
+    def test_invalid_groups_exits_with_config_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, \
-                patch.dict(os.environ, {"QIEMAN_GROUP_ID": "abc"}, clear=True), \
-                patch.object(GROUP, "QiemanClient", return_value=self._client(posts)) as factory:
+                patch.dict(os.environ, {"QIEMAN_GROUPS": "abc:小组"}, clear=True):
             code, output = self.run_main("--posts-dir", os.path.join(tmp, "posts"))
+        self.assertEqual(code, 2)
+        self.assertIn("ERROR", output)
+
+    def test_multiple_groups_isolate_dirs_and_index_files(self) -> None:
+        client = MagicMock()
+        client.fetch_all_posts.side_effect = lambda group_id: (
+            [raw_post(post_id=201, title="A组帖子")] if group_id == 43
+            else [raw_post(post_id=202, title="B组帖子")]
+        )
+        client.fetch_comments.return_value = []
+        env = {"QIEMAN_GROUPS": "43:A组,44:B组"}
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.dict(os.environ, env, clear=True), \
+                patch.object(GROUP, "QiemanClient", return_value=client):
+            code, output = self.run_main("--posts-dir", os.path.join(tmp, "posts"))
+            base = os.path.join(tmp, "posts")
+            dir_43 = os.path.exists(os.path.join(base, "qieman_posts_43"))
+            dir_44 = os.path.exists(os.path.join(base, "qieman_posts_44"))
         self.assertEqual(code, 0)
-        self.assertIn("WARN", output)
-        factory.return_value.fetch_all_posts.assert_called_once_with(43)
+        self.assertIn("NOTIFY_POSTS=1 新帖 2 篇", output)
+        self.assertIn("[A组]ETF拯救世界《A组帖子》", output)
+        self.assertIn("[B组]ETF拯救世界《B组帖子》", output)
+        self.assertTrue(dir_43)
+        self.assertTrue(dir_44)
 
     def test_list_failure_exits_non_zero(self) -> None:
         client = MagicMock()

@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """且慢小组帖子归档（白虎面板版）。
 
-抓取且慢小组（默认 43 长赢同路人）的帖子和评论，支持双通道持久化：
-文件通道输出 Markdown（默认开启），飞书通道按
-“投资文章/且慢小组/{博主名}/{日期时间}-{标题}”归档为飞书文档
-（配置 FEISHU_* 机密变量后启用）。日志末行输出 NOTIFY_POSTS 标记，
-配合白虎通知正则提取实现“有新帖才通知”。
+抓取且慢小组（QIEMAN_GROUPS 可配多个，默认 43 长赢同路人）的帖子和评论，
+支持双通道持久化：文件通道按小组输出 Markdown（默认开启），飞书通道以
+知识库节点树“投资文章/且慢小组/{小组名}/{博主名}/{日期时间}-{标题}”
+归档为 wiki 文档（配置 FEISHU_* 机密变量后启用）。日志末行输出
+NOTIFY_POSTS 标记，配合白虎通知正则提取实现“有新帖才通知”。
 """
 
 from __future__ import annotations
@@ -117,14 +117,43 @@ def _env_flag(raw: str, default: str = "true") -> bool:
     return _first_candidate(raw, default).strip().lower() not in {"false", "0", "no"}
 
 
-def _env_int(raw: str, default: int) -> int:
-    value = _first_candidate(raw, "")
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        if value:
-            log(f"WARN: 环境变量不是合法数字（{value}），使用默认值 {default}")
-        return default
+def parse_groups(raw: str) -> "list[tuple[int, str]]":
+    """解析 43:长赢同路人,58:其他小组；未提供时使用默认小组。"""
+    if not raw.strip():
+        return [(DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME)]
+    groups: list[tuple[int, str]] = []
+    seen_ids: set[int] = set()
+    for position, entry in enumerate(raw.split(","), start=1):
+        entry = entry.strip()
+        if not entry:
+            continue
+        code, separator, name = entry.partition(":")
+        code = code.strip()
+        name = name.strip() if separator else code
+        if not code.isdigit():
+            raise ValueError(f"QIEMAN_GROUPS 第 {position} 项的小组 ID 必须是数字：{code}")
+        if not name:
+            raise ValueError(f"QIEMAN_GROUPS 第 {position} 项缺少小组名称")
+        group_id = int(code)
+        if group_id in seen_ids:
+            raise ValueError(f"QIEMAN_GROUPS 存在重复小组 ID：{group_id}")
+        seen_ids.add(group_id)
+        if any(existing == name for _, existing in groups):
+            log(f"WARN: 小组名称重复（{name}），飞书归档会写入同一个文件夹")
+        groups.append((group_id, name))
+    if not groups:
+        raise ValueError("QIEMAN_GROUPS 没有有效小组")
+    return groups
+
+
+def groups_from_env_and_args(groups_arg: str) -> list[tuple[int, str]]:
+    """--groups 优先于 QIEMAN_GROUPS 变量；都未提供时使用默认小组。"""
+    if groups_arg.strip():
+        return parse_groups(groups_arg)
+    env_groups = _first_candidate(os.environ.get("QIEMAN_GROUPS", ""), "")
+    if env_groups:
+        return parse_groups(env_groups)
+    return parse_groups("")
 
 
 def mask_token(value: str) -> str:
@@ -516,7 +545,7 @@ class FileSink:
 class FeishuDocsConfig:
     app_id: str
     app_secret: str
-    folder_token: str
+    wiki_token: str
     category: str = DEFAULT_FEISHU_CATEGORY
     upload_images: bool = True
     text_limit: int = 9000
@@ -528,7 +557,7 @@ class FeishuDocsConfig:
         values = {
             "FEISHU_APP_ID": _env_candidates(os.environ.get("FEISHU_APP_ID", "")),
             "FEISHU_APP_SECRET": _env_candidates(os.environ.get("FEISHU_APP_SECRET", "")),
-            "FEISHU_FOLDER_TOKEN": _env_candidates(os.environ.get("FEISHU_FOLDER_TOKEN", "")),
+            "FEISHU_WIKI_TOKEN": _env_candidates(os.environ.get("FEISHU_WIKI_TOKEN", "")),
         }
         configured = [key for key, value in values.items() if value]
         if not configured:
@@ -540,7 +569,7 @@ class FeishuDocsConfig:
         return cls(
             app_id=values["FEISHU_APP_ID"][0],
             app_secret=values["FEISHU_APP_SECRET"][0],
-            folder_token=values["FEISHU_FOLDER_TOKEN"][0],
+            wiki_token=values["FEISHU_WIKI_TOKEN"][0],
             category=(
                 _first_candidate(
                     os.environ.get("QIEMAN_FEISHU_CATEGORY", ""), DEFAULT_FEISHU_CATEGORY
@@ -555,11 +584,14 @@ class FeishuDocsConfig:
 
 
 class FeishuDocsClient:
+    """飞书知识库（wiki）文档客户端：目录树以 wiki 节点组织。"""
+
     RETRYABLE_CODES = {1254002, 1254290, 1254291, 1254607, 1255040}
 
     def __init__(self, config: FeishuDocsConfig) -> None:
         self.config = config
         self.access_token = ""
+        self._root: tuple[str, str] | None = None  # (space_id, root_node_token)
 
     def _redact(self, message: Any) -> str:
         result = str(message or "")
@@ -567,7 +599,7 @@ class FeishuDocsClient:
             set(
                 self.config.app_id_candidates
                 + self.config.app_secret_candidates
-                + (self.config.folder_token,)
+                + (self.config.wiki_token,)
             ),
             key=len,
             reverse=True,
@@ -601,7 +633,7 @@ class FeishuDocsClient:
         raise RuntimeError(
             f"获取飞书 tenant_access_token 失败：{last_error}；"
             "请确认 FEISHU_APP_ID 与 FEISHU_APP_SECRET 来自同一个飞书自建应用，"
-            "且应用具有云文档与文件夹权限"
+            "且应用具有知识库读写权限"
         )
 
     def request(
@@ -650,46 +682,75 @@ class FeishuDocsClient:
             )
         raise RuntimeError("飞书接口重试次数已用尽")
 
-    def list_children(self, folder_token: str) -> list[dict[str, Any]]:
+    def resolve_root(self) -> tuple[str, str]:
+        """解析 FEISHU_WIKI_TOKEN：wiki 节点或知识库空间，返回 (space_id, 节点token)。"""
+        if self._root is not None:
+            return self._root
+        try:
+            result = self.request(
+                "GET",
+                "/wiki/v2/spaces/get_node",
+                params={"token": self.config.wiki_token, "obj_type": "wiki"},
+            )
+            node = (result.get("data") or {}).get("node") or {}
+            if node.get("space_id") and node.get("node_token"):
+                log(
+                    "飞书：根节点为知识库节点"
+                    f"「{node.get('title') or '未命名'}」"
+                    f"（{mask_token(str(node.get('node_token')))}）"
+                )
+                self._root = (str(node["space_id"]), str(node["node_token"]))
+                return self._root
+        except RuntimeError as exc:
+            log(f"飞书：Token 不是知识库节点，尝试按知识库空间解析（{exc}）")
+        self.request("GET", f"/wiki/v2/spaces/{self.config.wiki_token}")
+        log("飞书：根节点为知识库空间（目录建在空间顶层）")
+        self._root = (self.config.wiki_token, "")
+        return self._root
+
+    def list_children(self, parent_node_token: str = "") -> list[dict[str, Any]]:
+        """列出某 wiki 节点（或空间顶层）的子节点。"""
+        space_id, _ = self.resolve_root()
         items: list[dict[str, Any]] = []
         page_token = ""
         while True:
-            params: dict[str, Any] = {"folder_token": folder_token, "page_size": 200}
+            params: dict[str, Any] = {"page_size": 50}
+            if parent_node_token:
+                params["parent_node_token"] = parent_node_token
             if page_token:
                 params["page_token"] = page_token
-            result = self.request("GET", "/drive/v1/files", params=params)
+            result = self.request(
+                "GET", f"/wiki/v2/spaces/{space_id}/nodes", params=params
+            )
             data = result.get("data", {})
             items.extend(
-                item for item in data.get("files") or [] if isinstance(item, dict)
+                item for item in data.get("items") or [] if isinstance(item, dict)
             )
             page_token = str(data.get("page_token") or "")
             if not data.get("has_more"):
                 return items
 
-    def ensure_folder(self, parent_token: str, name: str) -> str:
-        for item in self.list_children(parent_token):
-            if item.get("type") == "folder" and str(item.get("name")) == name:
-                return str(item.get("token"))
-        result = self.request(
-            "POST",
-            "/drive/v1/files/create_folder",
-            data={"name": name, "folder_token": parent_token},
-        )
-        token = (result.get("data") or {}).get("token")
-        if not token:
-            raise RuntimeError(f"创建飞书文件夹「{name}」后未返回 token")
-        return str(token)
+    def create_node(
+        self, parent_node_token: str, title: str, obj_type: str = "docx"
+    ) -> dict[str, str]:
+        """在 wiki 中创建节点，返回 {node_token, obj_token}。"""
+        space_id, _ = self.resolve_root()
+        data: dict[str, Any] = {"obj_type": obj_type, "title": title}
+        if parent_node_token:
+            data["parent_node_token"] = parent_node_token
+        result = self.request("POST", f"/wiki/v2/spaces/{space_id}/nodes", data=data)
+        node = (result.get("data") or {}).get("node") or {}
+        node_token = str(node.get("node_token") or "")
+        if not node_token:
+            raise RuntimeError(f"创建知识库节点「{title}」后未返回 node_token")
+        return {"node_token": node_token, "obj_token": str(node.get("obj_token") or "")}
 
-    def create_document(self, title: str, folder_token: str) -> str:
-        result = self.request(
-            "POST",
-            "/docx/v1/documents",
-            data={"title": title, "folder_token": folder_token},
-        )
-        document_id = ((result.get("data") or {}).get("document") or {}).get("document_id")
-        if not document_id:
-            raise RuntimeError(f"创建飞书文档「{title}」后未返回 document_id")
-        return str(document_id)
+    def ensure_node(self, parent_node_token: str, name: str) -> str:
+        for item in self.list_children(parent_node_token):
+            if str(item.get("title")) == name:
+                return str(item.get("node_token"))
+        created = self.create_node(parent_node_token, name)
+        return created["node_token"]
 
     def upload_image(self, document_id: str, url: str) -> str:
         image = requests.get(url, timeout=30)
@@ -751,12 +812,13 @@ def image_block(file_token: str) -> dict[str, Any]:
 
 
 class FeishuIndex:
-    """帖子ID → 文档ID 的本地索引；丢失时可从文件夹扫描重建。"""
+    """单小组的 帖子ID → wiki 节点 本地索引；丢失时可从知识库扫描重建。"""
 
     def __init__(self, path: str) -> None:
         self.path = path
-        self.category_folder_id = ""
-        self.authors: dict[str, str] = {}
+        self.category_node_token = ""
+        self.group_node_token = ""
+        self.authors: dict[str, str] = {}  # 博主名 → 节点 token
         self.posts: dict[str, dict[str, str]] = {}
 
     def load(self) -> None:
@@ -768,7 +830,8 @@ class FeishuIndex:
         except (OSError, json.JSONDecodeError):
             log("WARN: 飞书索引文件损坏，视为空索引")
             return
-        self.category_folder_id = str(data.get("category_folder_id") or "")
+        self.category_node_token = str(data.get("category_node_token") or "")
+        self.group_node_token = str(data.get("group_node_token") or "")
         self.authors = {
             str(name): str(token)
             for name, token in (data.get("authors") or {}).items()
@@ -782,7 +845,8 @@ class FeishuIndex:
 
     def save(self) -> None:
         payload = {
-            "category_folder_id": self.category_folder_id,
+            "category_node_token": self.category_node_token,
+            "group_node_token": self.group_node_token,
             "authors": self.authors,
             "posts": self.posts,
         }
@@ -793,56 +857,78 @@ class FeishuIndex:
     def recorded_ids(self) -> set[int]:
         return {int(post_id) for post_id in self.posts}
 
-    def rebuild(self, client: FeishuDocsClient, reports: list[dict[str, Any]]) -> None:
-        """扫描 且慢小组/{博主}/ 下的文档名，按确定性命名匹配回填索引。"""
-        category_id = client.ensure_folder(client.config.folder_token, client.config.category)
-        self.category_folder_id = category_id
-        folders = {
-            str(item.get("name")): str(item.get("token"))
-            for item in client.list_children(category_id)
-            if item.get("type") == "folder"
+    def rebuild(
+        self,
+        client: FeishuDocsClient,
+        reports: list[dict[str, Any]],
+        group_name: str,
+    ) -> None:
+        """扫描 且慢小组/{小组名}/{博主}/ 下的节点标题，按确定性命名匹配回填索引。"""
+        _, root_node = client.resolve_root()
+        category = client.ensure_node(root_node, client.config.category)
+        group_node = client.ensure_node(category, group_name)
+        self.category_node_token = category
+        self.group_node_token = group_node
+        authors = {
+            str(item.get("title")): str(item.get("node_token"))
+            for item in client.list_children(group_node)
         }
         matched: dict[str, dict[str, str]] = {}
         for report in reports:
-            author_folder = folders.get(report["author"])
-            if not author_folder:
+            author_node = authors.get(report["author"])
+            if not author_node:
                 continue
             title = doc_title(report)
-            for item in client.list_children(author_folder):
-                if str(item.get("name")) == title:
+            for item in client.list_children(author_node):
+                if str(item.get("title")) == title:
                     matched[str(report["post_id"])] = {
-                        "doc_id": str(item.get("token")),
+                        "node_token": str(item.get("node_token")),
+                        "doc_id": "",
                         "author": report["author"],
                         "title": title,
                     }
                     break
-        self.authors = folders
+        self.authors = {
+            name: token for name, token in authors.items() if token
+        }
         self.posts = matched
-        log(f"飞书：索引重建完成，匹配 {len(matched)} 篇已归档文档")
+        log(f"飞书：索引重建完成（{group_name}），匹配 {len(matched)} 篇已归档文档")
 
 
 class FeishuSink:
-    def __init__(self, client: FeishuDocsClient, index: FeishuIndex) -> None:
+    def __init__(
+        self,
+        client: FeishuDocsClient,
+        index: FeishuIndex,
+        group_name: str,
+    ) -> None:
         self.client = client
         self.index = index
         self.config = client.config
+        self.group_name = group_name
 
-    def _author_folder(self, author: str) -> str:
-        folder = self.index.authors.get(author)
-        if folder:
-            return folder
-        if not self.index.category_folder_id:
-            self.index.category_folder_id = self.client.ensure_folder(
-                self.config.folder_token, self.config.category
+    def _author_node(self, author: str) -> str:
+        node = self.index.authors.get(author)
+        if node:
+            return node
+        if not self.index.group_node_token:
+            _, root_node = self.client.resolve_root()
+            category = self.index.category_node_token or self.client.ensure_node(
+                root_node, self.config.category
             )
-        folder = self.client.ensure_folder(self.index.category_folder_id, author)
-        self.index.authors[author] = folder
-        return folder
+            self.index.category_node_token = category
+            self.index.group_node_token = self.client.ensure_node(
+                category, self.group_name
+            )
+        node = self.client.ensure_node(self.index.group_node_token, author)
+        self.index.authors[author] = node
+        return node
 
     def save(self, report: dict[str, Any], comments: list[dict[str, Any]]) -> str:
-        """写入一篇帖子文档并登记索引；索引条目即“该帖已完成”标记。"""
-        folder = self._author_folder(report["author"])
-        document_id = self.client.create_document(doc_title(report), folder)
+        """写入一篇帖子 wiki 文档并登记索引；索引条目即“该帖已完成”标记。"""
+        author_node = self._author_node(report["author"])
+        created = self.client.create_node(author_node, doc_title(report))
+        document_id = created["obj_token"]
 
         label = f"{report['author']} {_date_label(report['created_ms'], with_time=True)}".strip()
         blocks: list[dict[str, Any]] = [
@@ -870,12 +956,13 @@ class FeishuSink:
 
         self.client.append_blocks(document_id, blocks)
         self.index.posts[str(report["post_id"])] = {
+            "node_token": created["node_token"],
             "doc_id": document_id,
             "author": report["author"],
             "title": doc_title(report),
         }
         self.index.save()
-        return document_id
+        return created["node_token"]
 
     def _image_items(self, document_id: str, urls: list[str]) -> list[dict[str, Any]]:
         return [self._image_or_link(document_id, url) for url in urls]
@@ -904,23 +991,14 @@ class FeishuSink:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="归档且慢小组帖子到文件与飞书文档")
     parser.add_argument(
-        "--group-id",
-        type=int,
-        default=_env_int(os.environ.get("QIEMAN_GROUP_ID", ""), DEFAULT_GROUP_ID),
-        help=f"要归档的小组数字 ID，默认 {DEFAULT_GROUP_ID}，可用 QIEMAN_GROUP_ID 配置",
-    )
-    parser.add_argument(
-        "--group-name",
-        default=_first_candidate(
-            os.environ.get("QIEMAN_GROUP_NAME", ""), DEFAULT_GROUP_NAME
-        )
-        or DEFAULT_GROUP_NAME,
-        help=f"小组显示名称，默认 {DEFAULT_GROUP_NAME}，可用 QIEMAN_GROUP_NAME 配置",
+        "--groups",
+        default="",
+        help="小组列表，格式 43:长赢同路人,58:其他小组；默认取 QIEMAN_GROUPS 变量",
     )
     parser.add_argument(
         "--posts-dir",
         default=os.environ.get("QIEMAN_POSTS_DIR", ""),
-        help="文件通道输出目录，默认脚本目录下 qieman_posts_<group_id>",
+        help="文件通道输出根目录，各小组写入其下 qieman_posts_<小组ID>",
     )
     parser.add_argument(
         "--full",
@@ -931,7 +1009,7 @@ def parse_args() -> argparse.Namespace:
         "--limit",
         type=int,
         default=0,
-        help="本次最多处理 N 篇待归档帖子（最新优先），用于全量回填分批",
+        help="每个小组本次最多处理 N 篇待归档帖子（最新优先），用于全量回填分批",
     )
     parser.add_argument(
         "--rebuild-feishu-index",
@@ -942,52 +1020,45 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    group_id = args.group_id
-    posts_dir = (
-        args.posts_dir.strip()
-        or os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), f"qieman_posts_{group_id}"
-        )
-    )
-    save_files = _env_flag(os.environ.get("QIEMAN_SAVE_FILES", ""))
-
-    try:
-        feishu_config = FeishuDocsConfig.from_env()
-    except ValueError as exc:
-        log(f"ERROR: {exc}", error=True)
-        return 2
-
-    if not save_files and feishu_config is None:
-        log("ERROR: 文件通道已关闭且未配置飞书，没有任何可用持久化通道", error=True)
-        return 2
-
-    log(f"开始归档且慢小组 {group_id}（{args.group_name}）")
+def run_group(
+    args: argparse.Namespace,
+    group_id: int,
+    group_name: str,
+    base_dir: str,
+    feishu_config: FeishuDocsConfig | None,
+    counts: dict[str, int],
+    archived: list[dict[str, Any]],
+) -> bool:
+    """归档单个小组；返回是否发生“应写全失败”。"""
+    posts_dir = os.path.join(base_dir, f"qieman_posts_{group_id}")
+    log(f"开始归档且慢小组 {group_id}（{group_name}）")
     client = QiemanClient()
     try:
         posts = client.fetch_all_posts(group_id)
     except Exception as exc:
-        log(f"ERROR: 获取帖子列表失败：{exc}", error=True)
-        return 1
+        log(f"ERROR: 获取小组 {group_id} 帖子列表失败：{exc}", error=True)
+        counts["group_fail"] += 1
+        return False
     log(f"帖子列表共 {len(posts)} 篇")
     reports = [organise_post(post) for post in posts if _timestamp(post.get("id"))]
 
-    file_sink = FileSink(posts_dir) if save_files else None
+    file_sink = FileSink(posts_dir) if _env_flag(os.environ.get("QIEMAN_SAVE_FILES", "")) else None
     feishu_sink: FeishuSink | None = None
     feishu_index: FeishuIndex | None = None
     if feishu_config is not None:
-        index_path = os.path.join(os.path.dirname(os.path.abspath(posts_dir)), "feishu_index.json")
+        index_path = os.path.join(base_dir, f"feishu_index_{group_id}.json")
         feishu_index = FeishuIndex(index_path)
         feishu_index.load()
-        if args.rebuild_feishu_index or (not feishu_index.posts and not feishu_index.authors):
+        if args.rebuild_feishu_index or (
+            not feishu_index.posts and not feishu_index.authors
+        ):
             try:
-                feishu_index.rebuild(FeishuDocsClient(feishu_config), reports)
+                feishu_index.rebuild(FeishuDocsClient(feishu_config), reports, group_name)
                 feishu_index.save()
             except Exception as exc:
                 log(f"WARN: 飞书索引重建失败，按空索引继续：{exc}", error=True)
                 feishu_index = FeishuIndex(index_path)
-        feishu_sink = FeishuSink(FeishuDocsClient(feishu_config), feishu_index)
+        feishu_sink = FeishuSink(FeishuDocsClient(feishu_config), feishu_index, group_name)
 
     file_existing = file_sink.existing_ids() if file_sink else set()
     feishu_existing = feishu_index.recorded_ids() if feishu_index else set()
@@ -995,7 +1066,9 @@ def main() -> int:
     # 各通道独立判需：任一通道缺失该帖即需处理；通道内部再决定是否写自己。
     pending = []
     for report in reports:
-        file_needs = bool(file_sink) and (args.full or report["post_id"] not in file_existing)
+        file_needs = bool(file_sink) and (
+            args.full or report["post_id"] not in file_existing
+        )
         feishu_needs = bool(feishu_sink) and report["post_id"] not in feishu_existing
         if file_needs or feishu_needs:
             pending.append((report, file_needs, feishu_needs))
@@ -1006,12 +1079,16 @@ def main() -> int:
     file_ok = file_fail = feishu_ok = feishu_fail = 0
     for position, (report, file_needs, feishu_needs) in enumerate(pending, 1):
         log(f"[{position}/{len(pending)}] 归档帖子 {report['post_id']}（{report['author']}）")
+        archived.append({"group": group_name, "report": report})
         comments: list[dict[str, Any]] = []
         if report["comment_num"] > 0:
             try:
                 comments = collect_comments(client, report["post_id"])
             except Exception as exc:
-                log(f"WARN: 帖子 {report['post_id']} 评论获取失败，按无评论归档：{exc}", error=True)
+                log(
+                    f"WARN: 帖子 {report['post_id']} 评论获取失败，按无评论归档：{exc}",
+                    error=True,
+                )
 
         if file_needs:
             try:
@@ -1029,36 +1106,94 @@ def main() -> int:
                 log(f"ERROR: 飞书通道写入 {report['post_id']} 失败：{exc}", error=True)
         if args.json:
             print(
-                json.dumps({**report, "comments": comments}, ensure_ascii=False, default=str)
+                json.dumps(
+                    {"group": group_name, **report, "comments": comments},
+                    ensure_ascii=False,
+                    default=str,
+                )
             )
         time.sleep(POST_SLEEP)
 
-    summary_parts = []
+    counts["file_ok"] += file_ok
+    counts["file_fail"] += file_fail
+    counts["feishu_ok"] += feishu_ok
+    counts["feishu_fail"] += feishu_fail
+    part = [f"{group_name}：待归档 {len(pending)}"]
     if file_sink:
-        summary_parts.append(f"文件：新增 {file_ok}、失败 {file_fail}")
+        part.append(f"文件新增 {file_ok}、失败 {file_fail}")
     if feishu_sink:
-        summary_parts.append(f"飞书：新增 {feishu_ok}、失败 {feishu_fail}")
-    log("本次结果：" + "；".join(summary_parts))
-    log(render_marker(pending))
+        part.append(f"飞书新增 {feishu_ok}、失败 {feishu_fail}")
+    log("小组结果：" + "；".join(part))
 
     total_expected = sum(
         int(file_needs) + int(feishu_needs) for _, file_needs, feishu_needs in pending
     )
-    if pending and total_expected > 0 and file_ok + feishu_ok == 0:
+    return bool(pending) and total_expected > 0 and file_ok + feishu_ok == 0
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        groups = groups_from_env_and_args(args.groups)
+    except ValueError as exc:
+        log(f"ERROR: {exc}", error=True)
+        return 2
+
+    base_dir = (
+        args.posts_dir.strip()
+        or os.path.dirname(os.path.abspath(__file__))
+    )
+    save_files = _env_flag(os.environ.get("QIEMAN_SAVE_FILES", ""))
+
+    try:
+        feishu_config = FeishuDocsConfig.from_env()
+    except ValueError as exc:
+        log(f"ERROR: {exc}", error=True)
+        return 2
+
+    if not save_files and feishu_config is None:
+        log("ERROR: 文件通道已关闭且未配置飞书，没有任何可用持久化通道", error=True)
+        return 2
+
+    counts = {"file_ok": 0, "file_fail": 0, "feishu_ok": 0, "feishu_fail": 0, "group_fail": 0}
+    archived: list[dict[str, Any]] = []
+    all_failed = True
+    for group_id, group_name in groups:
+        group_all_failed = run_group(
+            args, group_id, group_name, base_dir, feishu_config, counts, archived
+        )
+        all_failed = all_failed and group_all_failed
+
+    summary_parts = []
+    if _env_flag(os.environ.get("QIEMAN_SAVE_FILES", "")):
+        summary_parts.append(f"文件：新增 {counts['file_ok']}、失败 {counts['file_fail']}")
+    if feishu_config is not None:
+        summary_parts.append(f"飞书：新增 {counts['feishu_ok']}、失败 {counts['feishu_fail']}")
+    if counts["group_fail"]:
+        summary_parts.append(f"小组失败 {counts['group_fail']} 个")
+    log("本次结果：" + "；".join(summary_parts))
+    log(render_marker(archived, multi_group=len(groups) > 1))
+
+    if counts["group_fail"] == len(groups):
+        log("ERROR: 所有小组的帖子列表均获取失败", error=True)
+        return 1
+    if all_failed and archived:
         log("ERROR: 所有帖子在全部开启通道均写入失败", error=True)
         return 1
     return 0
 
 
-def render_marker(pending: list[tuple[dict[str, Any], bool, bool]]) -> str:
-    if not pending:
+def render_marker(archived: list[dict[str, Any]], multi_group: bool = False) -> str:
+    if not archived:
         return "NOTIFY_POSTS=0 今日无新帖"
     summary = "；".join(
-        f"{report['author']}《{report['title'][:20]}》" for report, _, _ in pending[:3]
+        (f"[{entry['group']}]" if multi_group else "")
+        + f"{entry['report']['author']}《{entry['report']['title'][:20]}》"
+        for entry in archived[:3]
     )
-    if len(pending) > 3:
-        summary += f" 等 {len(pending)} 篇"
-    marker = f"NOTIFY_POSTS=1 新帖 {len(pending)} 篇：{summary}"
+    if len(archived) > 3:
+        summary += f" 等 {len(archived)} 篇"
+    marker = f"NOTIFY_POSTS=1 新帖 {len(archived)} 篇：{summary}"
     if len(marker) > MARKER_SUMMARY_LIMIT:
         marker = marker[: MARKER_SUMMARY_LIMIT - 1].rstrip() + "…"
     return marker
