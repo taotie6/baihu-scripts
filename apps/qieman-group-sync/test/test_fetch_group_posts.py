@@ -366,7 +366,7 @@ class FeishuDocsClientTest(unittest.TestCase):
         _, kwargs = request.call_args
         self.assertEqual(
             kwargs["data"],
-            {"obj_type": "docx", "title": "标题", "parent_node_token": "wikN"},
+            {"obj_type": "docx", "node_type": "origin", "title": "标题", "parent_node_token": "wikN"},
         )
         self.assertEqual(created, {"node_token": "wikNew", "obj_token": "doxcnNew"})
 
@@ -454,6 +454,7 @@ class FeishuSinkTest(unittest.TestCase):
         client = MagicMock()
         client.config = config
         client.create_node.return_value = {"node_token": "wikPost", "obj_token": "doccn1"}
+        client.create_image_block.return_value = "blk-img"
         client.upload_image.return_value = "ftoken"
         index = GROUP.FeishuIndex(os.path.join(tmp, "feishu_index_43.json"))
         index.category_node_token = "nd-cat"
@@ -490,11 +491,11 @@ class FeishuSinkTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             sink, client = self._sink(tmp, upload_images=True)
             sink.save(report, [])
-        client.upload_image.assert_called_once()
+        client.create_image_block.assert_called_once_with("doccn1")
+        client.upload_image.assert_called_once_with("blk-img", "https://cdn.qieman.com/a.jpg")
+        client.update_image_block.assert_called_once_with("doccn1", "blk-img", "ftoken")
         blocks = client.append_blocks.call_args[0][1]
-        image_blocks = [b for b in blocks if b["block_type"] == 27]
-        self.assertEqual(len(image_blocks), 1)
-        self.assertEqual(image_blocks[0]["image"]["token"], "ftoken")
+        self.assertFalse(any(b["block_type"] == 27 for b in blocks))
 
     def test_image_upload_failure_falls_back_to_link(self) -> None:
         report = GROUP.organise_post(raw_post())

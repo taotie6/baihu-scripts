@@ -22,7 +22,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -796,7 +796,11 @@ class FeishuDocsClient:
     ) -> dict[str, str]:
         """在 wiki 中创建节点，返回 {node_token, obj_token}。"""
         space_id, _ = self.resolve_root()
-        data: dict[str, Any] = {"obj_type": obj_type, "title": title}
+        data: dict[str, Any] = {
+            "obj_type": obj_type,
+            "node_type": "origin",
+            "title": title,
+        }
         if parent_node_token:
             data["parent_node_token"] = parent_node_token
         result = self.request("POST", f"/wiki/v2/spaces/{space_id}/nodes", data=data)
@@ -813,7 +817,19 @@ class FeishuDocsClient:
         created = self.create_node(parent_node_token, name)
         return created["node_token"]
 
-    def upload_image(self, document_id: str, url: str) -> str:
+    def create_image_block(self, document_id: str) -> str:
+        result = self.request(
+            "POST",
+            f"/docx/v1/documents/{document_id}/blocks/{document_id}/children",
+            data={"children": [{"block_type": 27, "image": {}}]},
+        )
+        children = ((result.get("data") or {}).get("children") or [])
+        block_id = str(children[0].get("block_id") or "") if children else ""
+        if not block_id:
+            raise RuntimeError("创建图片块后未返回 block_id")
+        return block_id
+
+    def upload_image(self, image_block_id: str, url: str) -> str:
         image = requests.get(url, timeout=30)
         image.raise_for_status()
         payload = image.content
@@ -824,7 +840,7 @@ class FeishuDocsClient:
             files={
                 "file_name": (None, filename),
                 "parent_type": (None, "docx_image"),
-                "parent_node": (None, document_id),
+                "parent_node": (None, image_block_id),
                 "size": (None, str(len(payload))),
                 "file": (filename, payload),
             },
@@ -833,6 +849,13 @@ class FeishuDocsClient:
         if not file_token:
             raise RuntimeError(f"上传图片 {mask_token(url)} 后未返回 file_token")
         return str(file_token)
+
+    def update_image_block(self, document_id: str, block_id: str, file_token: str) -> None:
+        self.request(
+            "PATCH",
+            f"/docx/v1/documents/{document_id}/blocks/{block_id}",
+            data={"replace_image": {"token": file_token}},
+        )
 
     def append_blocks(self, document_id: str, blocks: list[dict[str, Any]]) -> None:
         for chunk in _chunks(blocks, DOC_BLOCK_BATCH):
@@ -996,9 +1019,14 @@ class FeishuSink:
             heading_block(label, 2),
             text_block("原文链接", report["link"]),
         ]
+        def flush_blocks() -> None:
+            if blocks:
+                self.client.append_blocks(document_id, list(blocks))
+                blocks.clear()
+
         for paragraph in report["paragraphs"]:
             if paragraph.kind == "image":
-                blocks.append(self._image_or_link(document_id, paragraph.url))
+                self._image_or_link(document_id, paragraph.url, blocks, flush_blocks)
             else:
                 blocks.append(text_block(self._clip(paragraph.text)))
 
@@ -1006,16 +1034,18 @@ class FeishuSink:
             blocks.append(heading_block("评论", 3))
             for comment in comments:
                 blocks.append(bullet_block(self._clip(f"{comment['author']}：{comment['text']}")))
-                blocks.extend(self._image_items(document_id, comment["images"]))
+                for url in comment["images"]:
+                    self._image_or_link(document_id, url, blocks, flush_blocks)
                 for reply in comment["replies"]:
                     if reply["to_user"] and reply["to_user"] != comment["author"]:
                         prefix = f"↳ {reply['author']} > {reply['to_user']}："
                     else:
                         prefix = f"↳ {reply['author']}："
                     blocks.append(bullet_block(self._clip(f"{prefix}{reply['text']}")))
-                    blocks.extend(self._image_items(document_id, reply["images"]))
+                    for url in reply["images"]:
+                        self._image_or_link(document_id, url, blocks, flush_blocks)
 
-        self.client.append_blocks(document_id, blocks)
+        flush_blocks()
         self.index.posts[str(report["post_id"])] = {
             "node_token": created["node_token"],
             "doc_id": document_id,
@@ -1025,17 +1055,24 @@ class FeishuSink:
         self.index.save()
         return created["node_token"]
 
-    def _image_items(self, document_id: str, urls: list[str]) -> list[dict[str, Any]]:
-        return [self._image_or_link(document_id, url) for url in urls]
-
-    def _image_or_link(self, document_id: str, url: str) -> dict[str, Any]:
+    def _image_or_link(
+        self,
+        document_id: str,
+        url: str,
+        blocks: list[dict[str, Any]],
+        flush_blocks: Callable[[], None],
+    ) -> None:
         if not self.config.upload_images:
-            return text_block(f"🖼 {url}")
+            blocks.append(text_block(f"🖼 {url}"))
+            return
+        flush_blocks()
         try:
-            return image_block(self.client.upload_image(document_id, url))
+            block_id = self.client.create_image_block(document_id)
+            file_token = self.client.upload_image(block_id, url)
+            self.client.update_image_block(document_id, block_id, file_token)
         except Exception as exc:
             log(f"WARN: 图片上传失败，降级为链接：{url[:60]}（{exc}）")
-            return text_block(f"🖼 {url}")
+            blocks.append(text_block(f"🖼 {url}"))
 
     def _clip(self, text: str) -> str:
         limit = self.config.text_limit
