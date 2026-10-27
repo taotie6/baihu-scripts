@@ -553,10 +553,26 @@ class FeishuDocsConfig:
     app_id_candidates: tuple[str, ...] = ()
     app_secret_candidates: tuple[str, ...] = ()
     table_token_candidates: tuple[str, ...] = ()
+    doc_token: str = ""
+    doc_token_candidates: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.table_token_candidates:
-            object.__setattr__(self, "table_token_candidates", (self.table_token,))
+            object.__setattr__(
+                self,
+                "table_token_candidates",
+                (self.table_token,) if self.table_token else (),
+            )
+        if not self.doc_token_candidates:
+            object.__setattr__(
+                self,
+                "doc_token_candidates",
+                (self.doc_token,) if self.doc_token else (),
+            )
+
+    @property
+    def root_token_candidates(self) -> tuple[str, ...]:
+        return self.doc_token_candidates + self.table_token_candidates
 
     @classmethod
     def from_env(cls) -> "FeishuDocsConfig | None":
@@ -564,18 +580,25 @@ class FeishuDocsConfig:
             "FEISHU_APP_ID": _env_candidates(os.environ.get("FEISHU_APP_ID", "")),
             "FEISHU_APP_SECRET": _env_candidates(os.environ.get("FEISHU_APP_SECRET", "")),
             "FEISHU_TABLE_TOKEN": _env_candidates(os.environ.get("FEISHU_TABLE_TOKEN", "")),
+            "FEISHU_DOC_TOKEN": _env_candidates(os.environ.get("FEISHU_DOC_TOKEN", "")),
         }
         configured = [key for key, value in values.items() if value]
         if not configured:
             return None
-        missing = [key for key, value in values.items() if not value]
+        missing = [
+            key
+            for key in ("FEISHU_APP_ID", "FEISHU_APP_SECRET")
+            if not values[key]
+        ]
+        if not values["FEISHU_DOC_TOKEN"] and not values["FEISHU_TABLE_TOKEN"]:
+            missing.extend(["FEISHU_DOC_TOKEN 或 FEISHU_TABLE_TOKEN"])
         if missing:
             raise ValueError("飞书文档归档为可选功能；启用时还需配置 " + "、".join(missing))
         text_limit = _first_candidate(os.environ.get("QIEMAN_FEISHU_TEXT_LIMIT", ""), "9000")
         return cls(
             app_id=values["FEISHU_APP_ID"][0],
             app_secret=values["FEISHU_APP_SECRET"][0],
-            table_token=values["FEISHU_TABLE_TOKEN"][0],
+            table_token=values["FEISHU_TABLE_TOKEN"][0] if values["FEISHU_TABLE_TOKEN"] else "",
             category=(
                 _first_candidate(
                     os.environ.get("QIEMAN_FEISHU_CATEGORY", ""), DEFAULT_FEISHU_CATEGORY
@@ -587,6 +610,8 @@ class FeishuDocsConfig:
             app_id_candidates=values["FEISHU_APP_ID"],
             app_secret_candidates=values["FEISHU_APP_SECRET"],
             table_token_candidates=values["FEISHU_TABLE_TOKEN"],
+            doc_token=values["FEISHU_DOC_TOKEN"][0] if values["FEISHU_DOC_TOKEN"] else "",
+            doc_token_candidates=values["FEISHU_DOC_TOKEN"],
         )
 
 
@@ -606,7 +631,7 @@ class FeishuDocsClient:
             set(
                 self.config.app_id_candidates
                 + self.config.app_secret_candidates
-                + self.config.table_token_candidates
+                + self.config.root_token_candidates
             ),
             key=len,
             reverse=True,
@@ -714,7 +739,7 @@ class FeishuDocsClient:
         """
         if self._root is not None:
             return self._root
-        candidates = self.config.table_token_candidates
+        candidates = self.config.root_token_candidates
         for token in candidates:
             try:
                 result = self.request(
@@ -756,16 +781,16 @@ class FeishuDocsClient:
             f"「{item.get('name') or item.get('space_id')}」" for item in spaces[:5]
         )
         raise RuntimeError(
-            f"FEISHU_TABLE_TOKEN 无法解析为知识库节点或空间"
+            f"FEISHU_DOC_TOKEN/FEISHU_TABLE_TOKEN 无法解析为知识库节点或空间"
             f"（已尝试 {len(candidates)} 个候选值）。"
             + (
                 f"机器人可见 {len(spaces)} 个知识库空间：{names}；"
-                "请把本应用的 FEISHU_TABLE_TOKEN 填为其中一个空间的 ID"
+                "请把 FEISHU_DOC_TOKEN 或 FEISHU_TABLE_TOKEN 填为其中一个空间的 ID"
                 "或归档根节点的 token（wikcn 开头）"
                 if spaces
                 else "机器人没有任何可见知识库空间；请把应用机器人添加为"
-                "目标知识库的可编辑协作者，或将 FEISHU_TABLE_TOKEN 填为"
-                "知识库节点 token（wikcn 开头）或空间 ID"
+                "目标知识库的可编辑协作者，或将 FEISHU_DOC_TOKEN/FEISHU_TABLE_TOKEN 填为"
+                "知识库节点 token（文档节点建议填 FEISHU_DOC_TOKEN）或空间 ID"
             )
         )
 

@@ -252,6 +252,31 @@ class FeishuDocsConfigTest(unittest.TestCase):
         self.assertEqual(config.category, "且慢小组")
         self.assertTrue(config.upload_images)
 
+    def test_doc_token_overrides_table_token_for_archive_root(self) -> None:
+        values = {
+            "FEISHU_APP_ID": "app",
+            "FEISHU_APP_SECRET": "secret",
+            "FEISHU_TABLE_TOKEN": "bxbc-table",
+            "FEISHU_DOC_TOKEN": "wikcn-doc",
+        }
+        with patch.dict(os.environ, values, clear=True):
+            config = GROUP.FeishuDocsConfig.from_env()
+        assert config
+        self.assertEqual(config.doc_token, "wikcn-doc")
+        self.assertEqual(config.root_token_candidates, ("wikcn-doc", "bxbc-table"))
+
+    def test_doc_token_can_be_used_without_table_token(self) -> None:
+        values = {
+            "FEISHU_APP_ID": "app",
+            "FEISHU_APP_SECRET": "secret",
+            "FEISHU_DOC_TOKEN": "wikcn-doc",
+        }
+        with patch.dict(os.environ, values, clear=True):
+            config = GROUP.FeishuDocsConfig.from_env()
+        assert config
+        self.assertEqual(config.table_token, "")
+        self.assertEqual(config.root_token_candidates, ("wikcn-doc",))
+
     def test_flags_and_text_limit(self) -> None:
         values = {
             "FEISHU_APP_ID": "app",
@@ -309,6 +334,30 @@ class FeishuDocsClientTest(unittest.TestCase):
 
         with patch.object(client, "request", side_effect=fake_request):
             self.assertEqual(client.resolve_root(), ("sp1", "wikN"))
+
+    def test_resolve_root_tries_doc_token_before_table_token(self) -> None:
+        config = GROUP.FeishuDocsConfig(
+            "app",
+            "secret",
+            "wikcn-table",
+            doc_token="wikcn-doc",
+        )
+        client = GROUP.FeishuDocsClient(config)
+
+        def fake_request(method: str, endpoint: str, **kwargs) -> dict:
+            if kwargs["params"]["token"] == "wikcn-doc":
+                return {
+                    "code": 0,
+                    "data": {"node": {"space_id": "sp1", "node_token": "wikDoc", "title": "投资文章"}},
+                }
+            raise RuntimeError("not found")
+
+        with patch.object(client, "request", side_effect=fake_request) as request:
+            self.assertEqual(client.resolve_root(), ("sp1", "wikDoc"))
+        self.assertEqual(
+            [call.kwargs["params"]["token"] for call in request.call_args_list],
+            ["wikcn-doc"],
+        )
 
     def test_resolve_root_auto_discovers_single_visible_space(self) -> None:
         client = GROUP.FeishuDocsClient(self._config())

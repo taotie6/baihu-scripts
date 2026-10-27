@@ -66,11 +66,16 @@ env_schema:
     type: "secret"
     required: false
     description: "可选；启用飞书文档归档时配置。"
-  - key: "FEISHU_TABLE_TOKEN"
-    label: "飞书知识库 Token"
+  - key: "FEISHU_DOC_TOKEN"
+    label: "飞书文档归档根 Token"
     type: "secret"
     required: false
-    description: "可选；与 qieman-sync 同名变量，直接复用其值即可。优先按知识库节点 token（wikcn）或空间 ID 解析；否则自动选择机器人唯一可见的知识库空间，多个空间时报错并列出。"
+    description: "可选；指向文档归档根节点的知识库 token（wikcn）。配置后优先于 FEISHU_TABLE_TOKEN，适合把归档树放在 qieman-sync 表格节点的上一层。"
+  - key: "FEISHU_TABLE_TOKEN"
+    label: "飞书知识库兼容 Token"
+    type: "secret"
+    required: false
+    description: "可选；未配置 FEISHU_DOC_TOKEN 时生效。可直接复用 qieman-sync 的值，优先按知识库节点 token（wikcn）或空间 ID 解析；否则自动选择机器人唯一可见的知识库空间，多个空间时报错并列出。"
   - key: "QIEMAN_FEISHU_CATEGORY"
     label: "飞书二级目录名"
     type: "string"
@@ -114,7 +119,7 @@ scenarios:
         cron: "0 30 21 * * *"
   - id: "file-and-feishu"
     name: "文件 + 飞书文档"
-    description: "配置 FEISHU_APP_ID、FEISHU_APP_SECRET、FEISHU_TABLE_TOKEN 后同时归档到飞书知识库文档。"
+    description: "配置 FEISHU_APP_ID、FEISHU_APP_SECRET 和 FEISHU_DOC_TOKEN（或兼容的 FEISHU_TABLE_TOKEN）后同时归档到飞书知识库文档。"
     task_presets:
       sync-group-posts:
         enabled: true

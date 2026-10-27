@@ -51,16 +51,20 @@ QIEMAN_GROUPS=43:长赢同路人,58:其他小组
 
 - `FEISHU_APP_ID`（机密变量）
 - `FEISHU_APP_SECRET`（机密变量）
-- `FEISHU_TABLE_TOKEN`（机密变量）：与 `qieman-sync` 同名变量，**直接复用
-  qieman-sync 里填的值即可**。解析顺序：
+- `FEISHU_DOC_TOKEN`（机密变量，推荐新增）：指向**文档归档根节点**，例如
+  `feishu.cn/wiki/wikcnXXXX` 中的 `wikcnXXXX`。配置后优先于
+  `FEISHU_TABLE_TOKEN` 使用，适合把归档树放在 qieman-sync 表格节点的上一层。
+- `FEISHU_TABLE_TOKEN`（机密变量）：可选兼容变量；未配置
+  `FEISHU_DOC_TOKEN` 时沿用 `qieman-sync` 同名变量。解析顺序：
 
-  1. 值是**知识库节点 token**（`feishu.cn/wiki/wikcnXXXX` 中的 `wikcnXXXX`，
-     建议指向“投资文章”这类根节点）→ 归档树建在该节点下；
-  2. 值是**知识库空间 ID**（`feishu.cn/wiki/space/?spaceId=...` 中的数字串）
+  1. `FEISHU_DOC_TOKEN` 是**知识库节点 token** → 归档树建在该节点下；
+  2. `FEISHU_TABLE_TOKEN` 是**知识库节点 token**（`feishu.cn/wiki/wikcnXXXX`
+     中的 `wikcnXXXX`）→ 归档树建在该节点下；
+  3. 值是**知识库空间 ID**（`feishu.cn/wiki/space/?spaceId=...` 中的数字串）
      → 归档树建在空间顶层；
-  3. 都不是（例如 qieman-sync 填的多维表格 `app_token`）→ 自动选择机器人
+  4. 都不是（例如 qieman-sync 填的多维表格 `app_token`）→ 自动选择机器人
      **唯一可见**的知识库空间建树；可见空间多于一个时报错并列出空间名，
-     此时把本应用的值改为其中一个空间的 ID 或某个 wiki 节点 token。
+     此时改用 `FEISHU_DOC_TOKEN` 指向根节点，或填知识库空间 ID。
 
   白虎合并过的 `old&new` 同名值会按新值优先逐个尝试。
 
@@ -68,7 +72,7 @@ QIEMAN_GROUPS=43:长赢同路人,58:其他小组
 是普通空文档节点）：
 
 ```text
-投资文章/                     ← FEISHU_TABLE_TOKEN 指向的节点（或空间顶层）
+投资文章/                     ← FEISHU_DOC_TOKEN 优先指向的节点（或空间顶层）
 └── 且慢小组/                 ← QIEMAN_FEISHU_CATEGORY，可改名
     └── {小组名}/             ← 各小组独立节点
         └── {博主名}/
