@@ -390,7 +390,10 @@ class BlockBuilderTest(unittest.TestCase):
         self.assertEqual(GROUP.heading_block("评论", 3)["block_type"], 5)
         text = GROUP.text_block("原文链接", "https://qieman.com/x")
         run = text["text"]["elements"][0]["text_run"]
-        self.assertEqual(run["text_element_style"]["link"]["url"], "https://qieman.com/x")
+        self.assertEqual(
+            run["text_element_style"]["link"]["url"],
+            "https%3A%2F%2Fqieman.com%2Fx",
+        )
         self.assertEqual(GROUP.bullet_block("内容")["block_type"], 12)
         self.assertEqual(GROUP.image_block("ft")["image"]["token"], "ft")
 

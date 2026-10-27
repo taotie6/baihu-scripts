@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable
+from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
@@ -848,7 +849,7 @@ class FeishuDocsClient:
 def _text_elements(text: str, link: str | None = None) -> list[dict[str, Any]]:
     run: dict[str, Any] = {"content": text}
     if link:
-        run["text_element_style"] = {"link": {"url": link}}
+        run["text_element_style"] = {"link": {"url": quote(link, safe="")}}
     return [{"text_run": run}]
 
 
