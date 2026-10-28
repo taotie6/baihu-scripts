@@ -1,14 +1,14 @@
 spec_version: "v1"
 id: "qieman-group-sync"
 name: "且慢小组帖子归档"
-version: "1.3.0"
+version: "1.4.0"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-10-25T00:00:00+08:00"
+last_commit: "2026-10-28T00:00:00+08:00"
 template:
   - tag: "QiemanGroupSync"
   - mise_languages: "python@3.12.11"
-description: "每天 21:30 归档且慢小组（QIEMAN_GROUPS 可配多个）帖子与评论：本地 Markdown 与飞书文档双通道，机密变量控制可同开，有新帖才通知。"
+description: "每天 21:30 归档且慢小组（QIEMAN_GROUPS 可配多个）帖子与评论：本地 Markdown 与飞书文档双通道，支持并发抓取，有新帖才通知。"
 homepage: "https://qieman.com/content/group-detail/43"
 build_opts:
   force_setup: false
@@ -45,6 +45,12 @@ env_schema:
     required: false
     default: "43:长赢同路人"
     description: "逗号分隔的 小组ID:名称，如 43:长赢同路人,58:其他小组；各小组目录与索引独立。"
+  - key: "QIEMAN_CONCURRENCY"
+    label: "并发抓取数"
+    type: "string"
+    required: false
+    default: "4"
+    description: "同时抓取的帖子数量，范围 1-16；用于大幅缩短历史回填耗时。"
   - key: "QIEMAN_SAVE_FILES"
     label: "启用文件通道"
     type: "string"

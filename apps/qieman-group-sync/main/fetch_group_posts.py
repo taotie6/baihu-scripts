@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import time
+from concurrent.futures import Future, FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Iterable
@@ -39,6 +40,8 @@ FILE_TITLE_LIMIT = 50
 DOC_TITLE_LIMIT = 40
 MARKER_SUMMARY_LIMIT = 120
 DOC_BLOCK_BATCH = 100
+DEFAULT_CONCURRENCY = 4
+MAX_CONCURRENCY = 16
 QIEMAN_PAGE_SLEEP = 0.3
 POST_SLEEP = 0.5
 
@@ -116,6 +119,17 @@ def _first_candidate(raw: str, default: str = "") -> str:
 
 def _env_flag(raw: str, default: str = "true") -> bool:
     return _first_candidate(raw, default).strip().lower() not in {"false", "0", "no"}
+
+
+def _concurrency(value: int | str | None) -> int:
+    """解析并发数；0、空值或非法值回退默认，并限制 API 压力。"""
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        parsed = 0
+    if parsed <= 0:
+        parsed = DEFAULT_CONCURRENCY
+    return min(parsed, MAX_CONCURRENCY)
 
 
 def parse_groups(raw: str) -> "list[tuple[int, str]]":
@@ -1135,12 +1149,27 @@ def parse_args() -> argparse.Namespace:
         help="每个小组本次最多处理 N 篇待归档帖子（最新优先），用于全量回填分批",
     )
     parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=0,
+        help="并发抓取的帖子数；默认 4，也可用 QIEMAN_CONCURRENCY 配置（1-16）",
+    )
+    parser.add_argument(
         "--rebuild-feishu-index",
         action="store_true",
         help="启动时从飞书文件夹扫描重建本地索引（自愈/修复用）",
     )
     parser.add_argument("--json", action="store_true", help="输出本次处理帖子的 JSON")
     return parser.parse_args()
+
+
+def _collect_comments_with_error(report: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    if report["comment_num"] <= 0:
+        return [], ""
+    try:
+        return collect_comments(QiemanClient(), report["post_id"]), ""
+    except Exception as exc:
+        return [], str(exc)
 
 
 def run_group(
@@ -1198,44 +1227,66 @@ def run_group(
     if args.limit > 0:
         pending = pending[: args.limit]
     log(f"待归档 {len(pending)} 篇（列表总数 {len(reports)}）")
+    concurrency = _concurrency(args.concurrency or os.environ.get("QIEMAN_CONCURRENCY", ""))
+    log(f"并发处理 {concurrency} 篇")
+
+    archived.extend(
+        {"group": group_name, "report": report}
+        for report, _, _ in pending
+    )
+    pending_entries: dict[Future[None], tuple[int, dict[str, Any], bool, bool]] = {}
+    total = len(pending)
+
+    def submit_next() -> bool:
+        if not pending:
+            return False
+        report, file_needs, feishu_needs = pending.pop(0)
+        position = total - len(pending)
+        log(f"[{position}/{total}] 归档帖子 {report['post_id']}（{report['author']}）")
+        future = executor.submit(_collect_comments_with_error, report)
+        pending_entries[future] = (position, report, file_needs, feishu_needs)
+        return True
 
     file_ok = file_fail = feishu_ok = feishu_fail = 0
-    for position, (report, file_needs, feishu_needs) in enumerate(pending, 1):
-        log(f"[{position}/{len(pending)}] 归档帖子 {report['post_id']}（{report['author']}）")
-        archived.append({"group": group_name, "report": report})
-        comments: list[dict[str, Any]] = []
-        if report["comment_num"] > 0:
-            try:
-                comments = collect_comments(client, report["post_id"])
-            except Exception as exc:
-                log(
-                    f"WARN: 帖子 {report['post_id']} 评论获取失败，按无评论归档：{exc}",
-                    error=True,
-                )
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        for _ in range(min(concurrency, total)):
+            submit_next()
 
-        if file_needs:
-            try:
-                file_sink.save(report, comments)
-                file_ok += 1
-            except Exception as exc:
-                file_fail += 1
-                log(f"ERROR: 文件通道写入 {report['post_id']} 失败：{exc}", error=True)
-        if feishu_needs:
-            try:
-                feishu_sink.save(report, comments)
-                feishu_ok += 1
-            except Exception as exc:
-                feishu_fail += 1
-                log(f"ERROR: 飞书通道写入 {report['post_id']} 失败：{exc}", error=True)
-        if args.json:
-            print(
-                json.dumps(
-                    {"group": group_name, **report, "comments": comments},
-                    ensure_ascii=False,
-                    default=str,
-                )
-            )
-        time.sleep(POST_SLEEP)
+        while pending_entries:
+            done, _ = wait(tuple(pending_entries), return_when=FIRST_COMPLETED)
+            for future in done:
+                _, report, file_needs, feishu_needs = pending_entries.pop(future)
+                comments, warning = future.result()
+                if warning:
+                    log(
+                        f"WARN: 帖子 {report['post_id']} 评论获取失败，按无评论归档：{warning}",
+                        error=True,
+                    )
+
+                if file_needs:
+                    try:
+                        file_sink.save(report, comments)
+                        file_ok += 1
+                    except Exception as exc:
+                        file_fail += 1
+                        log(f"ERROR: 文件通道写入 {report['post_id']} 失败：{exc}", error=True)
+                if feishu_needs:
+                    try:
+                        feishu_sink.save(report, comments)
+                        feishu_ok += 1
+                    except Exception as exc:
+                        feishu_fail += 1
+                        log(f"ERROR: 飞书通道写入 {report['post_id']} 失败：{exc}", error=True)
+                if args.json:
+                    print(
+                        json.dumps(
+                            {"group": group_name, **report, "comments": comments},
+                            ensure_ascii=False,
+                            default=str,
+                        )
+                    )
+                submit_next()
+                time.sleep(POST_SLEEP)
 
     counts["file_ok"] += file_ok
     counts["file_fail"] += file_fail
