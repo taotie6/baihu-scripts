@@ -1,7 +1,7 @@
 spec_version: "v1"
 id: "qieman-group-sync"
 name: "且慢小组帖子归档"
-version: "1.4.0"
+version: "1.4.1"
 author: "taotie6"
 category: "投资工具"
 last_commit: "2026-10-28T00:00:00+08:00"
