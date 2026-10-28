@@ -1029,23 +1029,49 @@ class FeishuSink:
         self.index = index
         self.config = client.config
         self.group_name = group_name
+        self._verified_nodes: set[str] = set()
+
+    def _node_exists(self, node_token: str) -> bool:
+        if not node_token or node_token in self._verified_nodes:
+            return bool(node_token)
+        try:
+            result = self.client.request(
+                "GET",
+                "/wiki/v2/spaces/get_node",
+                params={"token": node_token, "obj_type": "wiki"},
+            )
+        except RuntimeError:
+            return False
+        node = (result.get("data") or {}).get("node") or {}
+        valid = bool(node.get("node_token"))
+        if valid:
+            self._verified_nodes.add(node_token)
+        return valid
 
     def _author_node(self, author: str) -> str:
-        node = self.index.authors.get(author)
-        if node:
-            return node
+        group_node = self.index.group_node_token
+        if group_node and not self._node_exists(group_node):
+            self.index.category_node_token = ""
+            self.index.group_node_token = ""
+            self.index.authors.clear()
+
+        author_node = self.index.authors.get(author)
+        if author_node and self._node_exists(author_node):
+            return author_node
+
         if not self.index.group_node_token:
             _, root_node = self.client.resolve_root()
-            category = self.index.category_node_token or self.client.ensure_node(
-                root_node, self.config.category
-            )
-            self.index.category_node_token = category
+            category = self.index.category_node_token
+            if not category or not self._node_exists(category):
+                category = self.client.ensure_node(root_node, self.config.category)
+                self.index.category_node_token = category
             self.index.group_node_token = self.client.ensure_node(
                 category, self.group_name
             )
-        node = self.client.ensure_node(self.index.group_node_token, author)
-        self.index.authors[author] = node
-        return node
+        author_node = self.client.ensure_node(self.index.group_node_token, author)
+        self.index.authors[author] = author_node
+        self.index.save()
+        return author_node
 
     def save(self, report: dict[str, Any], comments: list[dict[str, Any]]) -> str:
         """写入一篇帖子 wiki 文档并登记索引；索引条目即“该帖已完成”标记。"""
