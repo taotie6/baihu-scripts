@@ -58,6 +58,15 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/a
 白虎重试整个任务时，已成功账号会直接跳过，不会被重复签到的 403
 覆盖为失败。
 
+## Token 动态更新
+
+服务端返回新 Token 时，脚本会立即把登录信息写回白虎机密：
+
+- 只配置 `IIOS_TOKEN` 时，更新 `IIOS_TOKEN`。
+- 配置了 `IIOS_SESSIONS` 时，更新 `IIOS_SESSIONS`，并只替换对应账号的 Token。
+- 写入依赖内置 `baihu.upsertSecret`，任务环境需要能使用 `BHPKG_OPENAPI_TOKEN` 鉴权。
+- 账号指纹使用 label、Cookie 和 User-Agent 计算，Token 刷新不会导致重试时重复签到或丢失当日成功缓存。
+
 ## 获取登录信息
 
 1. 登录 `https://www.iios.fun/`。

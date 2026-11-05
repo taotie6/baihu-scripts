@@ -42,6 +42,8 @@ const state = readState();
 const configuredToken = envValue('iios_token');
 const configuredFingerprint = tokenFingerprint(configuredToken);
 const pendingNotifications = [];
+const pendingSecretWrites = [];
+const queuedSecretWrites = new Map();
 
 globalThis.$prefs = {
   valueForKey(key) {
@@ -61,6 +63,9 @@ globalThis.$prefs = {
       state[key] = String(value || '');
       if (key === 'iios_token') state.token_source_fingerprint = configuredFingerprint;
       writeState(state);
+      if (key === 'iios_token' || key === 'iios_sessions') {
+        upsertSecret(KEY_ALIASES[key], state[key]);
+      }
       return true;
     } catch (error) {
       console.error(`[iios] 状态保存失败: ${error.message}`);
@@ -68,6 +73,32 @@ globalThis.$prefs = {
     }
   },
 };
+
+function upsertSecret(name, value) {
+  if (!baihu || typeof baihu.upsertSecret !== 'function') return;
+  const secretName = String(name || '');
+  const secretValue = String(value || '');
+  const writeKey = `${secretName}\u0000${secretValue}`;
+  if (queuedSecretWrites.has(writeKey)) return;
+  queuedSecretWrites.set(writeKey, true);
+
+  const write = Promise.resolve()
+    .then(() => baihu.upsertSecret(
+      secretName,
+      secretValue,
+      'iios.fun 脚本运行时动态刷新 Token',
+      true,
+      'iios,token'
+    ))
+    .then(result => {
+      console.log(`[iios] 机密已更新: ${result && result.name || secretName}`);
+    })
+    .catch(error => {
+      process.exitCode = 1;
+      console.error(`[iios] 机密 ${secretName} 更新失败: ${error && error.message || error}`);
+    });
+  pendingSecretWrites.push(write);
+}
 
 globalThis.$task = {
   async fetch(options) {
@@ -143,7 +174,10 @@ globalThis.$done = function done(value) {
 };
 
 process.on('beforeExit', async () => {
-  if (!pendingNotifications.length) return;
-  const batch = pendingNotifications.splice(0);
+  const batch = [
+    ...pendingNotifications.splice(0),
+    ...pendingSecretWrites.splice(0)
+  ];
+  if (!batch.length) return;
   await Promise.allSettled(batch);
 });
