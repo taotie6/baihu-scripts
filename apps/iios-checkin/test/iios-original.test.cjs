@@ -55,6 +55,26 @@ test('an unsigned generic 403 remains a failure', async () => {
   assert.match(result.error, /^HTTP 403/);
 });
 
+test('a Cloudflare challenge produces an actionable error', async () => {
+  const result = await checkinSession(
+    { label: 'cloudflare', token: 'test-token', cookie: '', userAgent: 'test-agent' },
+    {
+      runtime: fakeRuntime({}),
+      async request() {
+        return {
+          status: 403,
+          headers: { 'cf-mitigated': 'challenge' },
+          body: '<!DOCTYPE html><title>Just a moment...</title>',
+        };
+      },
+    },
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /被 Cloudflare 验证页拦截/);
+  assert.match(result.error, /完成验证后重试/);
+});
+
 test('a successful account is not requested again during a same-day task retry', async () => {
   preferences.delete('iios_success_cache');
   const session = { label: 'account-2', token: 'stable-token', cookie: '', userAgent: 'test-agent' };

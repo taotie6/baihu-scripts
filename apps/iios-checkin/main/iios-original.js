@@ -537,6 +537,13 @@ function buildSignedRequest(session, encoded, timestamp) {
   return { url: API_URL, method: 'POST', headers, body: encoded.d, timeout: 120 };
 }
 
+function isCloudflareChallenge(response) {
+  const headers = normalizeHeaders(response.headers);
+  const body = String(response.body || '');
+  return headers['cf-mitigated'] === 'challenge'
+    || /<title>just a moment\.\.\.<\/title>|challenge-platform|turnstile/i.test(body);
+}
+
 async function checkinSession(session, dependencies) {
   const deps = dependencies || {};
   const configuredToken = cleanToken(session.token);
@@ -604,6 +611,13 @@ async function checkinSession(session, dependencies) {
 
   if (status < 200 || status >= 300) {
     const detail = payloadMessage(payload);
+    if (isCloudflareChallenge(response)) {
+      return {
+        ok: false,
+        label: session.label,
+        error: 'HTTP ' + status + '：被 Cloudflare 验证页拦截。请在浏览器中完成验证后重试，普通 Node 请求可能无法通过指纹校验。'
+      };
+    }
     return {
       ok: false,
       label: session.label,
