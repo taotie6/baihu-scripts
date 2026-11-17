@@ -15,7 +15,8 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuati
 
 ## 摘要配置
 
-- `QIEMAN_VALUATION_LIMIT`：低估、高估榜单各显示多少个指数，默认 `5`。
+- `QIEMAN_VALUATION_LIMIT`：数字变量，低估、高估榜单各显示多少个指数，默认 `5`。
+- `QIEMAN_TIMEZONE`：普通变量，默认 `Asia/Shanghai`，用于估值和债券收益日期。
 
 指数摘要同时显示 PE、PE 历史百分位、PB 和 PB 历史百分位。债券收益显示 YTM、
 历史百分位和估值状态。百分位越接近 0%，表示指标越靠近历史低位。
@@ -30,7 +31,7 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/qieman-valuati
 
 同时配置以下三个变量才会启用飞书写入；全部留空时自动跳过：
 
-- `FEISHU_APP_ID`（机密变量）
+- `FEISHU_APP_ID`（普通变量：飞书应用标识，不是密钥）
 - `FEISHU_APP_SECRET`（机密变量）
 - `FEISHU_TABLE_TOKEN`（机密变量）
 
@@ -73,7 +74,7 @@ FEISHU_TOKEN_TYPE=wiki
 `FEISHU_APP_ID` 和 `FEISHU_APP_SECRET` 从同一个飞书自建应用复制，Secret 没有填成
 Verification Token、Encrypt Key 或其他凭据。该错误与 `FEISHU_TABLE_TOKEN` 无关。
 
-`1.0.3` 起三个凭据均由白虎机密变量注入，应用更新时会覆盖旧值。从旧版更新时，
+App Secret 和 Table Token 必须使用白虎机密变量；App ID 是普通变量。从旧版更新时，
 请在应用配置页重新确认三个值后再应用更新。如存量变量已被合并成 `old&new`，脚本会优先尝试新值
 并有界回退，日志不会输出凭据原文。
 

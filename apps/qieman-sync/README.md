@@ -28,7 +28,9 @@ LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划
 QIEMAN_PLANS=LONG_WIN:长赢指数150计划
 ```
 
-- `QIEMAN_HISTORY_LIMIT`：任务日志中保留的最近调仓批次数，默认 `3`。
+- `QIEMAN_HISTORY_LIMIT`：数字变量，任务日志中保留的最近调仓批次数，默认 `3`。
+
+`QIEMAN_TIMEZONE`：普通变量，默认 `Asia/Shanghai`，用于净值和调仓日期。
 
 ## 白虎通知配置
 
@@ -43,7 +45,7 @@ QIEMAN_PLANS=LONG_WIN:长赢指数150计划
 
 同时配置以下三个变量才会启用飞书写入；全部留空时自动跳过：
 
-- `FEISHU_APP_ID`（机密变量）
+- `FEISHU_APP_ID`（普通变量：飞书应用标识，不是密钥）
 - `FEISHU_APP_SECRET`（机密变量）
 - `FEISHU_TABLE_TOKEN`（机密变量）
 
@@ -86,7 +88,7 @@ FEISHU_TOKEN_TYPE=wiki
 `FEISHU_APP_ID` 和 `FEISHU_APP_SECRET` 从同一个飞书自建应用复制，Secret 没有填成
 Verification Token、Encrypt Key 或其他凭据。该错误与 `FEISHU_TABLE_TOKEN` 无关。
 
-`1.0.3` 起三个凭据均由白虎机密变量注入，应用更新时会覆盖旧值。从旧版更新时，
+App Secret 和 Table Token 必须使用白虎机密变量；App ID 是普通变量。从旧版更新时，
 请在应用配置页重新确认三个值后再应用更新。对于白虎历史上已合并成 `old&new` 的同名值，
 脚本会优先尝试新值并有界回退，日志不会输出凭据原文。
 

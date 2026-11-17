@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qieman-valuation"
 name: "且慢每日估值"
-version: "1.0.4"
+version: "1.1.0"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-10-24T00:00:00+08:00"
+last_commit: "2026-11-17T14:15:00+08:00"
 template:
   - tag: "QiemanValuation"
   - mise_languages: "python@3.12.11"
@@ -39,17 +39,23 @@ setup:
     mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/qieman-valuation/main/requirements.txt"
     mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/qieman-valuation/main/sync_qieman_valuation.py"
 env_schema:
-  - key: "QIEMAN_VALUATION_LIMIT"
-    label: "估值榜单数量"
+  - key: "QIEMAN_TIMEZONE"
+    label: "时区"
     type: "string"
     required: false
-    default: "5"
+    default: "Asia/Shanghai"
+    description: "IANA 时区名称，例如 Asia/Shanghai；用于估值日期与债券收益日期。"
+  - key: "QIEMAN_VALUATION_LIMIT"
+    label: "估值榜单数量"
+    type: "number"
+    required: false
+    default: 5
     description: "任务日志摘要中低估与高估榜单各显示多少个指数，范围 1-20。"
   - key: "FEISHU_APP_ID"
     label: "飞书应用 App ID"
-    type: "secret"
+    type: "string"
     required: false
-    description: "可选；启用飞书同步时与 App Secret、Table Token 一起配置。"
+    description: "可选；飞书应用标识，不是密钥。启用飞书同步时与 App Secret、Table Token 一起配置。"
   - key: "FEISHU_APP_SECRET"
     label: "飞书应用 App Secret"
     type: "secret"
@@ -62,10 +68,15 @@ env_schema:
     description: "可选；多维表格 app_token，或 FEISHU_TOKEN_TYPE=wiki 时填写 Wiki 节点 Token。"
   - key: "FEISHU_TOKEN_TYPE"
     label: "飞书 Token 类型"
-    type: "string"
+    type: "select"
     required: false
     default: "bitable"
-    description: "bitable 或 wiki。"
+    description: "FEISHU_TABLE_TOKEN 对应的资源类型。"
+    options:
+      - label: "多维表格 app_token"
+        value: "bitable"
+      - label: "知识库 Wiki 节点 Token"
+        value: "wiki"
 sync_rules:
   defaults:
     timeout: 10

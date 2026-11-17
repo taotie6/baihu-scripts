@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qoder-cn-checkin"
 name: "Qoder CN 用量与签到"
-version: "1.1.0"
+version: "1.2.0"
 author: "taotie6"
 category: "福利签到"
-last_commit: "2026-10-20T00:00:00+08:00"
+last_commit: "2026-11-17T14:15:00+08:00"
 template:
   - tag: "QoderCnCheckin"
   - mise_languages: "python@3.12.11"
@@ -68,9 +68,9 @@ env_schema:
     default: "0.3.4"
   - key: "QODER_CN_HEATMAP_DAYS"
     label: "热力图天数"
-    type: "string"
+    type: "number"
     required: false
-    default: "30"
+    default: 30
 sync_rules:
   defaults:
     timeout: 5

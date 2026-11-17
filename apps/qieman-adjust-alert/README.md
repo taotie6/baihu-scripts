@@ -68,6 +68,9 @@ NOTIFY_UPDATE=0 今日无调仓更新                        ← 无更新
 LONG_WIN:长赢指数150计划,LONG_WIN_S:长赢指数S计划
 ```
 
+`QIEMAN_TIMEZONE` 是普通变量，默认 `Asia/Shanghai`，只有在需要按其他 IANA 时区
+判断交易日时才修改。
+
 ## 调试与本地检查
 
 ```bash

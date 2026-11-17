@@ -182,6 +182,8 @@ python tools/export_baihu_credentials.py
 │       └── main/
 ├── apps.json
 ├── build-all.py
+├── docs/
+│   └── environment-audit.md
 ├── tools/
 │   ├── export_baihu_credentials.py
 │   └── requirements.txt
@@ -207,8 +209,9 @@ python build-all.py --check
 
 ## 安全
 
-Token、Cookie 和多账号 JSON 只能保存到白虎变量机密中，不要写入脚本、
-Manifest 或提交到仓库。
+Token、Cookie、密码、登录态和多账号 JSON 只能保存到白虎机密变量中，不要写入
+脚本、Manifest 或提交到仓库。App ID、渠道 ID、URL、路径、枚举、数量和开关使用
+普通变量；完整分类见 [变量与机密审计](docs/environment-audit.md)。
 
 ## 免责声明
 
