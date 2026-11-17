@@ -145,6 +145,22 @@ class LoadAccountsTest(unittest.TestCase):
                     [CHECKIN.Account("账号1", "user", "one")],
                 )
 
+    def test_accepts_backslash_line_continuations_and_unknown_prefix(self) -> None:
+        value = (
+            '&unknown-wrapper\n'
+            '[{"label":"账号1","account":"user1","password":"one"},\
+'
+            '{"label":"账号2","account":"user2","password":"two"}]'
+        )
+
+        self.assertEqual(
+            self.load({"IPCHECK_POOL_ACCOUNTS": value}),
+            [
+                CHECKIN.Account("账号1", "user1", "one"),
+                CHECKIN.Account("账号2", "user2", "two"),
+            ],
+        )
+
     def test_accepts_html_entity_encoded_json(self) -> None:
         document = '[{"account":"user","password":"one"}]'
         documents = [

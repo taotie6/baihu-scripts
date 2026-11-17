@@ -16,7 +16,7 @@ from typing import Any, Callable
 import requests
 
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 BASE_URL = "https://ai01.teleapi.top"
 LOGIN_PATH = "/ipcheck/api/pool/local_login"
 CHECKIN_PATH = "/ipcheck/api/pool/checkin"
@@ -231,41 +231,70 @@ def _restore_escaped_layout(text: str) -> str:
             output.append(char)
             index += 1
             continue
-        if char == "\\" and index + 1 < len(text) and text[index + 1] in replacements:
-            output.append(replacements[text[index + 1]])
-            index += 2
-            continue
+        if char == "\\" and index + 1 < len(text):
+            following = text[index + 1]
+            if following in ("\n", "\r"):
+                # 复制多行 JSON 时常见的行尾续行符：},\n 或 },\r\n。
+                index += 2
+                if following == "\r" and index < len(text) and text[index] == "\n":
+                    index += 1
+                continue
+            if following in replacements:
+                output.append(replacements[following])
+                index += 2
+                continue
         output.append(char)
         index += 1
     return "".join(output)
 
 
+def _json_candidates(text: str) -> list[str]:
+    """返回原文及从任意 [/{ 起点到最后一个 ]/} 的可解析片段。"""
+    candidates = [text]
+    # 本应用只接受账号数组；不要误把内部账号对象当成完整配置。
+    pairs = {"[": "]"}
+    for start, opening in enumerate(text[:4096]):
+        closing = pairs.get(opening)
+        if closing is None:
+            continue
+        end = text.rfind(closing)
+        if end > start:
+            candidate = text[start : end + 1]
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
 def _parse_accounts_json(raw_accounts: str) -> Any:
     normalised = _normalise_accounts_text(raw_accounts)
-    try:
-        return json.loads(normalised)
-    except json.JSONDecodeError as first_error:
-        restored = _restore_escaped_layout(normalised)
-        if restored != normalised:
-            try:
-                return json.loads(restored)
-            except json.JSONDecodeError as restored_error:
-                error = restored_error
-        else:
-            error = first_error
+    restored = _restore_escaped_layout(normalised)
+    candidates: list[str] = []
+    for base in (normalised, restored):
+        for candidate in _json_candidates(base):
+            if candidate not in candidates:
+                candidates.append(candidate)
 
-        if not restored:
-            hint = "变量内容为空"
-        elif restored[0] not in "[{":
-            hint = f"开头字符不是 [ 或 {{（U+{ord(restored[0]):04X}）"
-        else:
-            hint = "请检查指定位置附近的逗号、引号或括号"
-        raise ValueError(
-            "IPCHECK_POOL_ACCOUNTS 不是合法 JSON："
-            f"{error.msg}（第 {error.lineno} 行，第 {error.colno} 列）。"
-            + hint
-            + f"（当前脚本 v{APP_VERSION}，已支持 HTML 实体和转义换行）"
-        ) from error
+    error: json.JSONDecodeError | None = None
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            error = exc
+
+    assert error is not None
+    target = candidates[-1]
+    if not target:
+        hint = "变量内容为空"
+    elif target[0] not in "[{":
+        hint = f"开头字符不是 [ 或 {{（U+{ord(target[0]):04X}）"
+    else:
+        hint = "请检查指定位置附近的逗号、引号或括号"
+    raise ValueError(
+        "IPCHECK_POOL_ACCOUNTS 不是合法 JSON："
+        f"{error.msg}（第 {error.lineno} 行，第 {error.colno} 列）。"
+        + hint
+        + f"（当前脚本 v{APP_VERSION}，已支持 HTML 实体、包装前缀和转义换行）"
+    ) from error
 
 
 def load_accounts() -> list[Account]:
