@@ -7,6 +7,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,7 +17,7 @@ from typing import Any, Callable
 import requests
 
 
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 BASE_URL = "https://ai01.teleapi.top"
 LOGIN_PATH = "/ipcheck/api/pool/local_login"
 CHECKIN_PATH = "/ipcheck/api/pool/checkin"
@@ -268,13 +269,52 @@ def _json_candidates(text: str) -> list[str]:
 def _parse_accounts_json(raw_accounts: str) -> Any:
     normalised = _normalise_accounts_text(raw_accounts)
     restored = _restore_escaped_layout(normalised)
+
+    # 先尝试完整文本，避免把密码中合法的 "&[" 误当成白虎的重名分隔符。
+    exact_error: json.JSONDecodeError | None = None
+    for candidate in (normalised, restored):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            exact_error = exc
+
+    # 白虎 formatEnvVarsInternal 会把同名机密用 & 拼接：
+    #   "" & "[...]"        -> "&[...]"
+    #   "[...]" & "[...]"   -> "[...]&[...]"
+    # 多个值都是账号数组时逐段解析并合并，避免只取到最后一段。
+    merged_parts = re.split(r"&+(?=\s*\[)", restored)
+    nonempty_parts = [part.strip() for part in merged_parts if part.strip()]
+    if restored.startswith("&") or len(nonempty_parts) > 1:
+        log(
+            "WARN: 检测到白虎面板将多个同名机密以 & 拼接；"
+            "脚本已兼容，建议在环境变量页清理重复的 IPCHECK_POOL_ACCOUNTS"
+        )
+
+    if nonempty_parts:
+        merged_accounts: list[Any] = []
+        merged_ok = True
+        for part in nonempty_parts:
+            try:
+                document = json.loads(_restore_escaped_layout(_normalise_accounts_text(part)))
+            except json.JSONDecodeError:
+                merged_ok = False
+                break
+            if not isinstance(document, list):
+                merged_ok = False
+                break
+            merged_accounts.extend(document)
+        if merged_ok and len(nonempty_parts) > 1:
+            return merged_accounts
+        if merged_ok and restored.startswith("&") and merged_accounts:
+            return merged_accounts
+
     candidates: list[str] = []
     for base in (normalised, restored):
         for candidate in _json_candidates(base):
             if candidate not in candidates:
                 candidates.append(candidate)
 
-    error: json.JSONDecodeError | None = None
+    error = exact_error
     for candidate in candidates:
         try:
             return json.loads(candidate)
@@ -293,7 +333,8 @@ def _parse_accounts_json(raw_accounts: str) -> Any:
         "IPCHECK_POOL_ACCOUNTS 不是合法 JSON："
         f"{error.msg}（第 {error.lineno} 行，第 {error.colno} 列）。"
         + hint
-        + f"（当前脚本 v{APP_VERSION}，已支持 HTML 实体、包装前缀和转义换行）"
+        + f"（当前脚本 v{APP_VERSION}，已支持 HTML 实体、同名机密 & 拼接、"
+        "包装前缀和转义换行）"
     ) from error
 
 
