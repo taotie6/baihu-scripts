@@ -16,6 +16,7 @@ from typing import Any, Callable
 import requests
 
 
+APP_VERSION = "1.0.3"
 BASE_URL = "https://ai01.teleapi.top"
 LOGIN_PATH = "/ipcheck/api/pool/local_login"
 CHECKIN_PATH = "/ipcheck/api/pool/checkin"
@@ -263,6 +264,7 @@ def _parse_accounts_json(raw_accounts: str) -> Any:
             "IPCHECK_POOL_ACCOUNTS 不是合法 JSON："
             f"{error.msg}（第 {error.lineno} 行，第 {error.colno} 列）。"
             + hint
+            + f"（当前脚本 v{APP_VERSION}，已支持 HTML 实体和转义换行）"
         ) from error
 
 
@@ -342,7 +344,7 @@ def checkin_account(
 
 def main() -> int:
     log("=" * 50)
-    log("[蹬蹬堂订阅池] 开始每日签到")
+    log(f"[蹬蹬堂订阅池] 开始每日签到（脚本 v{APP_VERSION}）")
     log("=" * 50)
     try:
         accounts = load_accounts()
