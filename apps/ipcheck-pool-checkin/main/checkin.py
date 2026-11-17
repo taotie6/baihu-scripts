@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import sys
@@ -164,6 +165,8 @@ def _normalise_accounts_text(text: str) -> str:
     for _ in range(3):
         before = value
         value = value.strip().strip(invisible).strip()
+        # 部分白虎版本会把 textarea 内容按 HTML 实体保存，例如 &quot;、&#34;。
+        value = html.unescape(value).strip().strip(invisible).strip()
         if value.startswith(prefix):
             value = value[len(prefix) :].strip().strip(invisible).strip()
 
@@ -181,6 +184,10 @@ def _normalise_accounts_text(text: str) -> str:
                 decoded = None
             if isinstance(decoded, str) and decoded.strip():
                 value = decoded.strip()
+            elif value[1:].lstrip().startswith(("[", "{", "［", "｛")):
+                # HTML 实体只编码了外层引号时，内部的 JSON 引号可能已解码，
+                # 此时无法作为 JSON 字符串解析，但可以安全地去掉外层引号。
+                value = value[1:-1].strip()
 
         if len(value) >= 2 and value[0] == value[-1] == "'":
             inner = value[1:-1].strip()

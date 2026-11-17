@@ -44,7 +44,7 @@ https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/ipcheck-pool-c
 ```
 
 推荐直接粘贴标准 JSON 数组。脚本同时兼容白虎机密变量常见的转义形式：
-字面量 `\n` 换行、外层代码围栏、`IPCHECK_POOL_ACCOUNTS=` 前缀、单/双引号包装、
+字面量 `\n` 换行、外层代码围栏、`IPCHECK_POOL_ACCOUNTS=` 前缀、单/双引号包装、HTML 实体（如 `&quot;`）、
 零宽字符和全角括号。密码不会写入脚本、Manifest 或任务日志。
 
 ## 通知

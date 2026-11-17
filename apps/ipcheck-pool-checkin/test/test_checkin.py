@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import html
 import importlib.util
 import json
 import os
@@ -135,6 +136,21 @@ class LoadAccountsTest(unittest.TestCase):
             "'" + document + "'",
             '［{"account":"user","password":"one"}］',
             json.dumps(document),
+        ]
+
+        for value in documents:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self.load({"IPCHECK_POOL_ACCOUNTS": value}),
+                    [CHECKIN.Account("账号1", "user", "one")],
+                )
+
+    def test_accepts_html_entity_encoded_json(self) -> None:
+        document = '[{"account":"user","password":"one"}]'
+        documents = [
+            html.escape(document),
+            "&quot;" + html.escape(document) + "&quot;",
+            "&#91;{&#34;account&#34;:&#34;user&#34;,&#34;password&#34;:&#34;one&#34;}&#93;",
         ]
 
         for value in documents:
