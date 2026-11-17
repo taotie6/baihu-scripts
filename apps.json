@@ -1,9 +1,9 @@
 {
   "version": "v1",
   "branch": "main",
-  "generated_at": "2026-11-17T02:20:00Z",
-  "generated_at_utc8": "2026-11-17 10:20:00",
-  "build_time": "2026-11-17 10:20:00",
+  "generated_at": "2026-11-17T02:31:00Z",
+  "generated_at_utc8": "2026-11-17 10:31:00",
+  "build_time": "2026-11-17 10:31:00",
   "total_apps": 11,
   "apps": [
     {
@@ -196,10 +196,10 @@
       "spec_version": "v1",
       "id": "ipcheck-pool-checkin",
       "name": "蹬蹬堂订阅池每日签到",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "taotie6",
       "category": "福利签到",
-      "last_commit": "2026-11-17T10:20:00+08:00",
+      "last_commit": "2026-11-17T10:31:00+08:00",
       "description": "蹬蹬堂订阅共享池账号密码登录与每日签到，支持单账号、多账号及白虎原生通知。",
       "homepage": "https://ai01.teleapi.top/ipcheck/pool",
       "build_opts": {
@@ -279,9 +279,9 @@
       "scenarios_count": 1,
       "app_dir": "ipcheck-pool-checkin",
       "manifest_path": "apps/ipcheck-pool-checkin/app.yaml",
-      "manifest_raw": "spec_version: \"v1\"\nid: \"ipcheck-pool-checkin\"\nname: \"蹬蹬堂订阅池每日签到\"\nversion: \"1.0.0\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-11-17T10:20:00+08:00\"\ntemplate:\n  - tag: \"IpcheckPoolCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"蹬蹬堂订阅共享池账号密码登录与每日签到，支持单账号、多账号及白虎原生通知。\"\nhomepage: \"https://ai01.teleapi.top/ipcheck/pool\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 20 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    path: \"apps/ipcheck-pool-checkin/main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/ipcheck-pool-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/ipcheck-pool-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/ipcheck-pool-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"IPCHECK_POOL_ACCOUNT\"\n    label: \"账号\"\n    type: \"secret\"\n    required: false\n    description: \"用户名或邮箱；单账号与多账号 JSON 二选一，并与密码同时填写。\"\n    placeholder: \"用户名或邮箱\"\n  - key: \"IPCHECK_POOL_PASSWORD\"\n    label: \"密码\"\n    type: \"secret\"\n    required: false\n    description: \"单账号密码；仅保存到白虎机密变量，不会输出到任务日志。\"\n    placeholder: \"密码\"\n  - key: \"IPCHECK_POOL_ACCOUNTS\"\n    label: \"多账号 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"JSON 数组；每项填写 label、account、password。配置后优先于单账号变量。\"\n    placeholder: '[{\"label\":\"账号1\",\"account\":\"user@example.com\",\"password\":\"...\"}]'\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/ipcheck-pool-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"蹬蹬堂订阅池每日签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py\"\n      default_cron: \"0 20 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日签到\"\n    description: \"每天 08:20 执行，随机延迟最多 5 分钟；结果由白虎任务通知统一推送。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 20 8 * * *\"\n",
+      "manifest_raw": "spec_version: \"v1\"\nid: \"ipcheck-pool-checkin\"\nname: \"蹬蹬堂订阅池每日签到\"\nversion: \"1.0.1\"\nauthor: \"taotie6\"\ncategory: \"福利签到\"\nlast_commit: \"2026-11-17T10:31:00+08:00\"\ntemplate:\n  - tag: \"IpcheckPoolCheckin\"\n  - mise_languages: \"python@3.12.11\"\ndescription: \"蹬蹬堂订阅共享池账号密码登录与每日签到，支持单账号、多账号及白虎原生通知。\"\nhomepage: \"https://ai01.teleapi.top/ipcheck/pool\"\nbuild_opts:\n  force_setup: false\n  skip_setup: false\n  skip_sync: false\n  overwrite_env: false\n  overwrite_task: true\nschedule_opts:\n  schedule: \"0 20 8 * * *\"\n  random_range: 300\n  timeout: 5\n  retry_count: 1\n  retry_interval: 60\nsources:\n  - id: \"repo\"\n    source_type: \"git\"\n    source_url: \"https://github.com/taotie6/baihu-scripts.git\"\n    branch: \"main\"\n    path: \"apps/ipcheck-pool-checkin/main\"\n    target_path: \"repo\"\nsetup:\n  check: >-\n    mise exec {mise_languages} -- python -c \"import requests\"\n    && mise exec {mise_languages} -- python -m py_compile\n    \"{app_dir}/repo/apps/ipcheck-pool-checkin/main/checkin.py\"\n  install: |\n    mise install {mise_languages}\n    mise exec {mise_languages} -- python -m pip install -r \"{app_dir}/repo/apps/ipcheck-pool-checkin/main/requirements.txt\"\n    mise exec {mise_languages} -- python -m py_compile \"{app_dir}/repo/apps/ipcheck-pool-checkin/main/checkin.py\"\nenv_schema:\n  - key: \"IPCHECK_POOL_ACCOUNT\"\n    label: \"账号\"\n    type: \"secret\"\n    required: false\n    description: \"用户名或邮箱；单账号与多账号 JSON 二选一，并与密码同时填写。\"\n    placeholder: \"用户名或邮箱\"\n  - key: \"IPCHECK_POOL_PASSWORD\"\n    label: \"密码\"\n    type: \"secret\"\n    required: false\n    description: \"单账号密码；仅保存到白虎机密变量，不会输出到任务日志。\"\n    placeholder: \"密码\"\n  - key: \"IPCHECK_POOL_ACCOUNTS\"\n    label: \"多账号 JSON\"\n    type: \"secret\"\n    required: false\n    description: \"JSON 数组；每项填写 label、account、password。配置后优先于单账号变量。\"\n    placeholder: '[{\"label\":\"账号1\",\"account\":\"user@example.com\",\"password\":\"...\"}]'\nsync_rules:\n  defaults:\n    timeout: 5\n    retry_count: 1\n    retry_interval: 60\n    work_dir: \"{app_dir}/repo/apps/ipcheck-pool-checkin/main\"\n    language: \"{mise_languages}\"\n  tasks:\n    - id: \"daily-checkin\"\n      name: \"蹬蹬堂订阅池每日签到\"\n      source: \"repo\"\n      language: \"{mise_languages}\"\n      command: \"python checkin.py\"\n      default_cron: \"0 20 8 * * *\"\n      enabled: true\nscenarios:\n  - id: \"standard\"\n    name: \"每日签到\"\n    description: \"每天 08:20 执行，随机延迟最多 5 分钟；结果由白虎任务通知统一推送。\"\n    default: true\n    task_presets:\n      daily-checkin:\n        enabled: true\n        cron: \"0 20 8 * * *\"\n",
       "manifest_url": "https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/ipcheck-pool-checkin/app.yaml",
-      "updated_at": "2026-11-17 10:20:00"
+      "updated_at": "2026-11-17 10:31:00"
     },
     {
       "spec_version": "v1",

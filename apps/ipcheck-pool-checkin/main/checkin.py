@@ -155,17 +155,115 @@ def _format_success(payload: dict[str, Any], already: bool = False) -> str:
     return "签到成功" + (f"，{'，'.join(parts)}" if parts else "")
 
 
+def _normalise_accounts_text(text: str) -> str:
+    """移除机密变量中常见的 JSON 外层包装和复制粘贴字符。"""
+    invisible = "\ufeff\u200b\u200e\u200f\u2060"
+    value = text.strip().strip(invisible).strip()
+    prefix = "IPCHECK_POOL_ACCOUNTS="
+
+    for _ in range(3):
+        before = value
+        value = value.strip().strip(invisible).strip()
+        if value.startswith(prefix):
+            value = value[len(prefix) :].strip().strip(invisible).strip()
+
+        if value.startswith("```") and value.endswith("```"):
+            lines = value.splitlines()
+            if len(lines) >= 3:
+                value = "\n".join(lines[1:-1]).strip().strip(invisible).strip()
+
+        # 白虎编辑器可能把整段 JSON 再包成 JSON 字符串，例如
+        # "[{\"account\":\"user\"}]"；json.loads 会正确还原中文和转义引号。
+        if len(value) >= 2 and value[0] == value[-1] == '"':
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                decoded = None
+            if isinstance(decoded, str) and decoded.strip():
+                value = decoded.strip()
+
+        if len(value) >= 2 and value[0] == value[-1] == "'":
+            inner = value[1:-1].strip()
+            if inner.startswith(("[", "{", "［", "｛")):
+                value = inner
+
+        outer_pairs = {"［": ("[", "］", "]"), "｛": ("{", "｝", "}")}
+        if value and value[0] in outer_pairs:
+            opening, fullwidth_closing, closing = outer_pairs[value[0]]
+            if value.endswith(fullwidth_closing):
+                value = opening + value[1:-1] + closing
+
+        if value == before:
+            break
+    return value
+
+
+def _restore_escaped_layout(text: str) -> str:
+    """还原 JSON 字符串外被面板转义成字面量的换行和缩进。"""
+    output: list[str] = []
+    in_string = False
+    escaped = False
+    index = 0
+    replacements = {"n": "\n", "r": "\r", "t": "\t"}
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+
+        if char == '"':
+            in_string = True
+            output.append(char)
+            index += 1
+            continue
+        if char == "\\" and index + 1 < len(text) and text[index + 1] in replacements:
+            output.append(replacements[text[index + 1]])
+            index += 2
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _parse_accounts_json(raw_accounts: str) -> Any:
+    normalised = _normalise_accounts_text(raw_accounts)
+    try:
+        return json.loads(normalised)
+    except json.JSONDecodeError as first_error:
+        restored = _restore_escaped_layout(normalised)
+        if restored != normalised:
+            try:
+                return json.loads(restored)
+            except json.JSONDecodeError as restored_error:
+                error = restored_error
+        else:
+            error = first_error
+
+        if not restored:
+            hint = "变量内容为空"
+        elif restored[0] not in "[{":
+            hint = f"开头字符不是 [ 或 {{（U+{ord(restored[0]):04X}）"
+        else:
+            hint = "请检查指定位置附近的逗号、引号或括号"
+        raise ValueError(
+            "IPCHECK_POOL_ACCOUNTS 不是合法 JSON："
+            f"{error.msg}（第 {error.lineno} 行，第 {error.colno} 列）。"
+            + hint
+        ) from error
+
+
 def load_accounts() -> list[Account]:
     """加载多账号 JSON 或单账号变量；多账号配置优先。"""
     raw_accounts = os.environ.get("IPCHECK_POOL_ACCOUNTS", "").strip()
     if raw_accounts:
-        try:
-            document = json.loads(raw_accounts)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                "IPCHECK_POOL_ACCOUNTS 不是合法 JSON："
-                f"{exc.msg}（第 {exc.lineno} 行，第 {exc.colno} 列）"
-            ) from exc
+        document = _parse_accounts_json(raw_accounts)
         if not isinstance(document, list):
             raise ValueError("IPCHECK_POOL_ACCOUNTS 必须是 JSON 数组")
 

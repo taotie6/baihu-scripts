@@ -95,9 +95,62 @@ class LoadAccountsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "必须同时填写"):
             self.load({"IPCHECK_POOL_ACCOUNT": "user@example.com"})
 
-    def test_invalid_multi_account_json_reports_location(self) -> None:
-        with self.assertRaisesRegex(ValueError, r"第 1 行，第 \d+ 列"):
-            self.load({"IPCHECK_POOL_ACCOUNTS": '[{"account":"user"},]'})
+    def test_accepts_literal_escaped_line_breaks_from_secret_variable(self) -> None:
+        value = (
+            r'[\n'
+            r'  {"label":"账号1","account":"user1","password":"one"},\n'
+            r'  {"label":"账号2","account":"user2","password":"two"}\n'
+            r']'
+        )
+
+        self.assertEqual(
+            self.load({"IPCHECK_POOL_ACCOUNTS": value}),
+            [
+                CHECKIN.Account("账号1", "user1", "one"),
+                CHECKIN.Account("账号2", "user2", "two"),
+            ],
+        )
+
+    def test_preserves_escapes_inside_json_strings(self) -> None:
+        value = r'[\n{"label":"account\n1","account":"user","password":"one"}\n]'
+
+        self.assertEqual(
+            self.load({"IPCHECK_POOL_ACCOUNTS": value}),
+            [CHECKIN.Account("account\n1", "user", "one")],
+        )
+
+    def test_accepts_leading_invisible_character(self) -> None:
+        value = '\u200b[{"account":"user","password":"one"}]'
+
+        self.assertEqual(
+            self.load({"IPCHECK_POOL_ACCOUNTS": value}),
+            [CHECKIN.Account("账号1", "user", "one")],
+        )
+
+    def test_accepts_common_copy_paste_wrappers(self) -> None:
+        document = '[{"account":"user","password":"one"}]'
+        documents = [
+            f"IPCHECK_POOL_ACCOUNTS={document}",
+            f"```json\n{document}\n```",
+            "'" + document + "'",
+            '［{"account":"user","password":"one"}］',
+            json.dumps(document),
+        ]
+
+        for value in documents:
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self.load({"IPCHECK_POOL_ACCOUNTS": value}),
+                    [CHECKIN.Account("账号1", "user", "one")],
+                )
+
+    def test_invalid_multi_account_json_reports_location_without_echoing_secret(self) -> None:
+        secret = "password-that-must-not-be-logged"
+        value = f'[{{"account":"user","password":"{secret}"}},]'
+
+        with self.assertRaisesRegex(ValueError, r"第 1 行，第 \d+ 列") as raised:
+            self.load({"IPCHECK_POOL_ACCOUNTS": value})
+        self.assertNotIn(secret, str(raised.exception))
 
 
 class CheckinAccountTest(unittest.TestCase):
