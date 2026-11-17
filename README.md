@@ -18,6 +18,7 @@
 | --- | --- | --- |
 | [aliyundrive-checkin](apps/aliyundrive-checkin/) | **已归档**：领取奖励需要官方客户端 | [app.yaml](apps/aliyundrive-checkin/app.yaml) |
 | [iios-checkin](apps/iios-checkin/) | iios.fun 每日签到，支持单账号与多账号 | [app.yaml](apps/iios-checkin/app.yaml) |
+| [ipcheck-pool-checkin](apps/ipcheck-pool-checkin/) | 蹬蹬堂订阅池账号密码登录与每日签到 | [app.yaml](apps/ipcheck-pool-checkin/app.yaml) |
 | [qieman-adjust-alert](apps/qieman-adjust-alert/) | 工作日 14:40 检查且慢顾投计划当日调仓，有更新才通知 | [app.yaml](apps/qieman-adjust-alert/app.yaml) |
 | [qieman-group-sync](apps/qieman-group-sync/) | 且慢小组帖子归档：本地 Markdown 与飞书文档双通道 | [app.yaml](apps/qieman-group-sync/app.yaml) |
 | [qieman-sync](apps/qieman-sync/) | 且慢顾投计划数据整理与推送，可选同步飞书 | [app.yaml](apps/qieman-sync/app.yaml) |
@@ -31,6 +32,12 @@ iios.fun 远程 Manifest：
 
 ```text
 https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/iios-checkin/app.yaml
+```
+
+蹬蹬堂订阅池远程 Manifest：
+
+```text
+https://raw.githubusercontent.com/taotie6/baihu-scripts/main/apps/ipcheck-pool-checkin/app.yaml
 ```
 
 阿里云盘远程 Manifest：
@@ -144,6 +151,9 @@ python tools/export_baihu_credentials.py
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── iios-checkin/
+│   │   ├── app.yaml
+│   │   └── main/
+│   ├── ipcheck-pool-checkin/
 │   │   ├── app.yaml
 │   │   └── main/
 │   ├── qieman-adjust-alert/

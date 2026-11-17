@@ -1,0 +1,83 @@
+spec_version: "v1"
+id: "ipcheck-pool-checkin"
+name: "蹬蹬堂订阅池每日签到"
+version: "1.0.0"
+author: "taotie6"
+category: "福利签到"
+last_commit: "2026-11-17T10:20:00+08:00"
+template:
+  - tag: "IpcheckPoolCheckin"
+  - mise_languages: "python@3.12.11"
+description: "蹬蹬堂订阅共享池账号密码登录与每日签到，支持单账号、多账号及白虎原生通知。"
+homepage: "https://ai01.teleapi.top/ipcheck/pool"
+build_opts:
+  force_setup: false
+  skip_setup: false
+  skip_sync: false
+  overwrite_env: false
+  overwrite_task: true
+schedule_opts:
+  schedule: "0 20 8 * * *"
+  random_range: 300
+  timeout: 5
+  retry_count: 1
+  retry_interval: 60
+sources:
+  - id: "repo"
+    source_type: "git"
+    source_url: "https://github.com/taotie6/baihu-scripts.git"
+    branch: "main"
+    path: "apps/ipcheck-pool-checkin/main"
+    target_path: "repo"
+setup:
+  check: >-
+    mise exec {mise_languages} -- python -c "import requests"
+    && mise exec {mise_languages} -- python -m py_compile
+    "{app_dir}/repo/apps/ipcheck-pool-checkin/main/checkin.py"
+  install: |
+    mise install {mise_languages}
+    mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/ipcheck-pool-checkin/main/requirements.txt"
+    mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/ipcheck-pool-checkin/main/checkin.py"
+env_schema:
+  - key: "IPCHECK_POOL_ACCOUNT"
+    label: "账号"
+    type: "secret"
+    required: false
+    description: "用户名或邮箱；单账号与多账号 JSON 二选一，并与密码同时填写。"
+    placeholder: "用户名或邮箱"
+  - key: "IPCHECK_POOL_PASSWORD"
+    label: "密码"
+    type: "secret"
+    required: false
+    description: "单账号密码；仅保存到白虎机密变量，不会输出到任务日志。"
+    placeholder: "密码"
+  - key: "IPCHECK_POOL_ACCOUNTS"
+    label: "多账号 JSON"
+    type: "secret"
+    required: false
+    description: "JSON 数组；每项填写 label、account、password。配置后优先于单账号变量。"
+    placeholder: '[{"label":"账号1","account":"user@example.com","password":"..."}]'
+sync_rules:
+  defaults:
+    timeout: 5
+    retry_count: 1
+    retry_interval: 60
+    work_dir: "{app_dir}/repo/apps/ipcheck-pool-checkin/main"
+    language: "{mise_languages}"
+  tasks:
+    - id: "daily-checkin"
+      name: "蹬蹬堂订阅池每日签到"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python checkin.py"
+      default_cron: "0 20 8 * * *"
+      enabled: true
+scenarios:
+  - id: "standard"
+    name: "每日签到"
+    description: "每天 08:20 执行，随机延迟最多 5 分钟；结果由白虎任务通知统一推送。"
+    default: true
+    task_presets:
+      daily-checkin:
+        enabled: true
+        cron: "0 20 8 * * *"
