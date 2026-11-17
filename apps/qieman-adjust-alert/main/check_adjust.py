@@ -26,7 +26,6 @@ import requests
 
 
 QIEMAN_BASE_URL = "https://qieman.com"
-MAX_ENV_CANDIDATES = 4
 DEFAULT_PLANS = OrderedDict(
     (
         ("LONG_WIN", "长赢指数150计划"),
@@ -112,16 +111,19 @@ def format_time(value: Any) -> str:
     return datetime.fromtimestamp(timestamp / 1000, tz=_timezone()).strftime("%H:%M")
 
 
-def _env_candidates(raw: str, *, maximum: int = MAX_ENV_CANDIDATES) -> tuple[str, ...]:
-    """解析白虎可能用 `&` 合并的同名变量，新值优先。"""
-    values: list[str] = []
-    for value in reversed(str(raw or "").split("&")):
-        value = value.strip()
-        if value and value not in values:
-            values.append(value)
-        if len(values) >= maximum:
-            break
-    return tuple(values)
+def _env_value(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
+
+
+def _single_env_value(name: str, default: str = "") -> str:
+    """读取单个凭证；同名记录被拼接时拒绝猜测。"""
+    value = _env_value(name, default)
+    if "&" in value:
+        raise ValueError(
+            f"{name} 检测到白虎同名变量拼接符 '&'。"
+            "请在“变量机密”页面删除重复项，只保留一条有效记录。"
+        )
+    return value
 
 
 class QiemanClient:
@@ -351,11 +353,6 @@ def _truncate(content: str, limit: int = 3500) -> str:
     return content
 
 
-def _first_candidate(raw: str, default: str = "") -> str:
-    values = _env_candidates(raw)
-    return values[0] if values else default
-
-
 class BaihuPushConfig:
     """可选的白虎脚本直推配置；未配置或仅部分配置时返回 None。"""
 
@@ -366,8 +363,8 @@ class BaihuPushConfig:
 
     @classmethod
     def from_env(cls) -> "BaihuPushConfig | None":
-        token = _first_candidate(os.environ.get("BHPKG_NOTIFY_TOKEN", ""))
-        channel = _first_candidate(os.environ.get("BHPKG_NOTIFY_CHANNEL", ""))
+        token = _single_env_value("BHPKG_NOTIFY_TOKEN")
+        channel = _single_env_value("BHPKG_NOTIFY_CHANNEL")
         if not token and not channel:
             return None
         if not token or not channel:
@@ -376,9 +373,7 @@ class BaihuPushConfig:
                 "BHPKG_NOTIFY_CHANNEL，当前不完整，已跳过直推"
             )
             return None
-        url = _first_candidate(
-            os.environ.get("BHPKG_NOTIFY_URL", ""), DEFAULT_BAIHU_NOTIFY_URL
-        )
+        url = _env_value("BHPKG_NOTIFY_URL", DEFAULT_BAIHU_NOTIFY_URL)
         return cls(token, channel, url)
 
 

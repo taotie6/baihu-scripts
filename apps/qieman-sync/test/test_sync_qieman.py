@@ -138,19 +138,18 @@ class FeishuConfigTest(unittest.TestCase):
         self.assertEqual(config.app_token, "token")
         self.assertEqual(config.token_type, "bitable")
 
-    def test_baihu_joined_secrets_prefer_the_latest_value(self) -> None:
-        values = {
-            "FEISHU_APP_ID": "old-app&new-app",
-            "FEISHU_APP_SECRET": "old-secret&old-secret&new-secret",
-            "FEISHU_TABLE_TOKEN": "old-token&new-token",
-        }
-        with patch.dict(os.environ, values, clear=True):
-            config = QIEMAN.FeishuConfig.from_env()
-        assert config
-        self.assertEqual(config.app_id, "new-app")
-        self.assertEqual(config.app_secret, "new-secret")
-        self.assertEqual(config.app_token, "new-token")
-        self.assertEqual(config.app_secret_candidates, ("new-secret", "old-secret"))
+    def test_baihu_joined_secrets_are_rejected(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "FEISHU_APP_ID": "old-app&new-app",
+                "FEISHU_APP_SECRET": "secret",
+                "FEISHU_TABLE_TOKEN": "token",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "删除重复项"):
+                QIEMAN.FeishuConfig.from_env()
 
 
 class BaihuTaskNotificationTest(unittest.TestCase):
@@ -172,64 +171,20 @@ class FeishuClientErrorTest(unittest.TestCase):
                 client._tenant_token()
         self.assertIn("FEISHU_TABLE_TOKEN 无关", str(context.exception))
 
-    def test_tries_credential_candidates_without_leaking_them(self) -> None:
-        config = QIEMAN.FeishuConfig(
-            "new-app",
-            "new-secret",
-            "base-token",
-            "bitable",
-            app_id_candidates=("new-app", "old-app"),
-            app_secret_candidates=("new-secret", "old-secret"),
-        )
-        client = QIEMAN.FeishuBitableClient(config)
-        responses = []
-        for payload in (
-            {"code": 10003, "msg": "app secret invalid"},
-            {"code": 0, "tenant_access_token": "tenant-token"},
-        ):
-            response = unittest.mock.MagicMock()
-            response.json.return_value = payload
-            responses.append(response)
-        with patch.object(QIEMAN.requests, "post", side_effect=responses) as post:
-            self.assertEqual(client._tenant_token(), "tenant-token")
-
-        self.assertEqual(post.call_count, 2)
-
-    def test_all_failed_candidates_are_redacted_from_error(self) -> None:
-        secrets = ("new-sensitive-secret", "old-sensitive-secret")
-        config = QIEMAN.FeishuConfig(
-            "app", secrets[0], "base-token", "bitable", app_secret_candidates=secrets
-        )
+    def test_invalid_app_secret_is_redacted_from_error(self) -> None:
+        secret = "sensitive-secret"
+        config = QIEMAN.FeishuConfig("app", secret, "base-token", "bitable")
         client = QIEMAN.FeishuBitableClient(config)
         response = unittest.mock.MagicMock()
         response.json.return_value = {
             "code": 10003,
-            "msg": f"invalid {secrets[0]}",
+            "msg": f"invalid {secret}",
         }
         with patch.object(QIEMAN.requests, "post", return_value=response):
             with self.assertRaises(RuntimeError) as context:
                 client._tenant_token()
         message = str(context.exception)
-        self.assertNotIn(secrets[0], message)
-        self.assertNotIn(secrets[1], message)
-
-    def test_tries_joined_table_token_candidates(self) -> None:
-        config = QIEMAN.FeishuConfig(
-            "app",
-            "secret",
-            "new-token",
-            "bitable",
-            app_token_candidates=("new-token", "old-token"),
-        )
-        client = QIEMAN.FeishuBitableClient(config)
-        with patch.object(
-            client,
-            "_list_tables",
-            side_effect=[RuntimeError("invalid new-token"), []],
-        ) as list_tables:
-            self.assertEqual(client.list_tables(), [])
-        self.assertEqual(list_tables.call_count, 2)
-        self.assertEqual(client.app_token, "old-token")
+        self.assertNotIn(secret, message)
 
 
 class MainExitStatusTest(unittest.TestCase):

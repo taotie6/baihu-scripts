@@ -238,19 +238,29 @@ class FeishuDocsConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "还需配置"):
                 GROUP.FeishuDocsConfig.from_env()
 
-    def test_complete_configuration_and_joined_values(self) -> None:
+    def test_complete_configuration_is_loaded(self) -> None:
         values = {
-            "FEISHU_APP_ID": "old&new-app",
+            "FEISHU_APP_ID": "app",
             "FEISHU_APP_SECRET": "new-secret",
             "FEISHU_TABLE_TOKEN": "wikcn-root",
         }
         with patch.dict(os.environ, values, clear=True):
             config = GROUP.FeishuDocsConfig.from_env()
         assert config
-        self.assertEqual(config.app_id, "new-app")
+        self.assertEqual(config.app_id, "app")
         self.assertEqual(config.table_token, "wikcn-root")
         self.assertEqual(config.category, "且慢小组")
         self.assertTrue(config.upload_images)
+
+    def test_joined_values_are_rejected(self) -> None:
+        values = {
+            "FEISHU_APP_ID": "old&new-app",
+            "FEISHU_APP_SECRET": "secret",
+            "FEISHU_TABLE_TOKEN": "wikcn-root",
+        }
+        with patch.dict(os.environ, values, clear=True):
+            with self.assertRaisesRegex(ValueError, "删除重复项"):
+                GROUP.FeishuDocsConfig.from_env()
 
     def test_doc_token_overrides_table_token_for_archive_root(self) -> None:
         values = {
@@ -263,7 +273,7 @@ class FeishuDocsConfigTest(unittest.TestCase):
             config = GROUP.FeishuDocsConfig.from_env()
         assert config
         self.assertEqual(config.doc_token, "wikcn-doc")
-        self.assertEqual(config.root_token_candidates, ("wikcn-doc", "bxbc-table"))
+        self.assertEqual(config.root_tokens, ("wikcn-doc", "bxbc-table"))
 
     def test_doc_token_can_be_used_without_table_token(self) -> None:
         values = {
@@ -275,7 +285,7 @@ class FeishuDocsConfigTest(unittest.TestCase):
             config = GROUP.FeishuDocsConfig.from_env()
         assert config
         self.assertEqual(config.table_token, "")
-        self.assertEqual(config.root_token_candidates, ("wikcn-doc",))
+        self.assertEqual(config.root_tokens, ("wikcn-doc",))
 
     def test_flags_and_text_limit(self) -> None:
         values = {
@@ -315,25 +325,6 @@ class FeishuDocsClientTest(unittest.TestCase):
 
         with patch.object(client, "request", side_effect=fake_request):
             self.assertEqual(client.resolve_root(), ("wikcn-root", ""))
-
-    def test_resolve_root_tries_token_candidates_in_order(self) -> None:
-        config = GROUP.FeishuDocsConfig(
-            "app", "secret", "bxbc-base", table_token_candidates=("bxbc-base", "wikcn-root")
-        )
-        client = GROUP.FeishuDocsClient(config)
-
-        def fake_request(method: str, endpoint: str, **kwargs) -> dict:
-            if "get_node" in endpoint:
-                if kwargs["params"]["token"] == "wikcn-root":
-                    return {
-                        "code": 0,
-                        "data": {"node": {"space_id": "sp1", "node_token": "wikN", "title": "投资文章"}},
-                    }
-                raise RuntimeError("node not found")
-            raise RuntimeError("space not found")
-
-        with patch.object(client, "request", side_effect=fake_request):
-            self.assertEqual(client.resolve_root(), ("sp1", "wikN"))
 
     def test_resolve_root_tries_doc_token_before_table_token(self) -> None:
         config = GROUP.FeishuDocsConfig(
@@ -391,17 +382,15 @@ class FeishuDocsClientTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "没有任何可见知识库空间"):
                 client.resolve_root()
 
-    def test_config_builds_token_candidates_from_joined_env(self) -> None:
+    def test_config_rejects_token_joined_from_duplicate_env(self) -> None:
         env = {
             "FEISHU_APP_ID": "app",
             "FEISHU_APP_SECRET": "secret",
             "FEISHU_TABLE_TOKEN": "bxbc-base&wikcn-root",
         }
         with patch.dict(os.environ, env, clear=True):
-            config = GROUP.FeishuDocsConfig.from_env()
-        assert config
-        self.assertEqual(config.table_token, "wikcn-root")
-        self.assertEqual(config.table_token_candidates, ("wikcn-root", "bxbc-base"))
+            with self.assertRaisesRegex(ValueError, "删除重复项"):
+                GROUP.FeishuDocsConfig.from_env()
 
     def test_create_node_posts_wiki_payload(self) -> None:
         client = GROUP.FeishuDocsClient(self._config())

@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qieman-adjust-alert"
 name: "且慢顾投调仓提醒"
-version: "1.1.0"
+version: "1.1.1"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-11-17T14:15:00+08:00"
+last_commit: "2026-11-17T14:45:59+08:00"
 template:
   - tag: "QiemanAdjustAlert"
   - mise_languages: "python@3.12.11"

@@ -32,7 +32,6 @@ import requests
 
 QIEMAN_BASE_URL = "https://qieman.com"
 FEISHU_BASE_URL = "https://open.feishu.cn/open-apis"
-MAX_ENV_CANDIDATES = 4
 DEFAULT_GROUP_ID = 43
 DEFAULT_GROUP_NAME = "长赢同路人"
 DEFAULT_FEISHU_CATEGORY = "且慢小组"
@@ -100,25 +99,23 @@ def sanitize_text(value: str, limit: int) -> str:
     return cleaned[:limit].strip()
 
 
-def _env_candidates(raw: str, *, maximum: int = MAX_ENV_CANDIDATES) -> tuple[str, ...]:
-    """解析白虎可能用 `&` 合并的同名变量，新值优先。"""
-    values: list[str] = []
-    for value in reversed(str(raw or "").split("&")):
-        value = value.strip()
-        if value and value not in values:
-            values.append(value)
-        if len(values) >= maximum:
-            break
-    return tuple(values)
+def _env_value(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
 
 
-def _first_candidate(raw: str, default: str = "") -> str:
-    values = _env_candidates(raw)
-    return values[0] if values else default
+def _single_env_value(name: str, default: str = "") -> str:
+    """读取单个凭证；同名记录被拼接时拒绝猜测。"""
+    value = _env_value(name, default)
+    if "&" in value:
+        raise ValueError(
+            f"{name} 检测到白虎同名变量拼接符 '&'。"
+            "请在“变量机密”页面删除重复项，只保留一条有效记录。"
+        )
+    return value
 
 
 def _env_flag(raw: str, default: str = "true") -> bool:
-    return _first_candidate(raw, default).strip().lower() not in {"false", "0", "no"}
+    return (raw.strip() or default).lower() not in {"false", "0", "no"}
 
 
 def _concurrency(value: int | str | None) -> int:
@@ -165,7 +162,7 @@ def groups_from_env_and_args(groups_arg: str) -> list[tuple[int, str]]:
     """--groups 优先于 QIEMAN_GROUPS 变量；都未提供时使用默认小组。"""
     if groups_arg.strip():
         return parse_groups(groups_arg)
-    env_groups = _first_candidate(os.environ.get("QIEMAN_GROUPS", ""), "")
+    env_groups = _env_value("QIEMAN_GROUPS")
     if env_groups:
         return parse_groups(env_groups)
     return parse_groups("")
@@ -191,7 +188,7 @@ def _chunks(items: list[Any], size: int) -> Iterable[list[Any]]:
 class QiemanClient:
     def __init__(self, session: requests.Session | None = None) -> None:
         self.session = session or requests.Session()
-        self.bearer_token = _first_candidate(os.environ.get("QIEMAN_BEARER_TOKEN", ""))
+        self.bearer_token = _single_env_value("QIEMAN_BEARER_TOKEN")
         self.page_sleep = QIEMAN_PAGE_SLEEP
 
     @staticmethod
@@ -564,37 +561,20 @@ class FeishuDocsConfig:
     category: str = DEFAULT_FEISHU_CATEGORY
     upload_images: bool = True
     text_limit: int = 9000
-    app_id_candidates: tuple[str, ...] = ()
-    app_secret_candidates: tuple[str, ...] = ()
-    table_token_candidates: tuple[str, ...] = ()
     doc_token: str = ""
-    doc_token_candidates: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not self.table_token_candidates:
-            object.__setattr__(
-                self,
-                "table_token_candidates",
-                (self.table_token,) if self.table_token else (),
-            )
-        if not self.doc_token_candidates:
-            object.__setattr__(
-                self,
-                "doc_token_candidates",
-                (self.doc_token,) if self.doc_token else (),
-            )
 
     @property
-    def root_token_candidates(self) -> tuple[str, ...]:
-        return self.doc_token_candidates + self.table_token_candidates
+    def root_tokens(self) -> tuple[str, ...]:
+        values = [self.doc_token, self.table_token]
+        return tuple(dict.fromkeys(value for value in values if value))
 
     @classmethod
     def from_env(cls) -> "FeishuDocsConfig | None":
         values = {
-            "FEISHU_APP_ID": _env_candidates(os.environ.get("FEISHU_APP_ID", "")),
-            "FEISHU_APP_SECRET": _env_candidates(os.environ.get("FEISHU_APP_SECRET", "")),
-            "FEISHU_TABLE_TOKEN": _env_candidates(os.environ.get("FEISHU_TABLE_TOKEN", "")),
-            "FEISHU_DOC_TOKEN": _env_candidates(os.environ.get("FEISHU_DOC_TOKEN", "")),
+            "FEISHU_APP_ID": _single_env_value("FEISHU_APP_ID"),
+            "FEISHU_APP_SECRET": _single_env_value("FEISHU_APP_SECRET"),
+            "FEISHU_TABLE_TOKEN": _single_env_value("FEISHU_TABLE_TOKEN"),
+            "FEISHU_DOC_TOKEN": _single_env_value("FEISHU_DOC_TOKEN"),
         }
         configured = [key for key, value in values.items() if value]
         if not configured:
@@ -608,24 +588,18 @@ class FeishuDocsConfig:
             missing.extend(["FEISHU_DOC_TOKEN 或 FEISHU_TABLE_TOKEN"])
         if missing:
             raise ValueError("飞书文档归档为可选功能；启用时还需配置 " + "、".join(missing))
-        text_limit = _first_candidate(os.environ.get("QIEMAN_FEISHU_TEXT_LIMIT", ""), "9000")
+        text_limit = _env_value("QIEMAN_FEISHU_TEXT_LIMIT", "9000")
         return cls(
-            app_id=values["FEISHU_APP_ID"][0],
-            app_secret=values["FEISHU_APP_SECRET"][0],
-            table_token=values["FEISHU_TABLE_TOKEN"][0] if values["FEISHU_TABLE_TOKEN"] else "",
+            app_id=values["FEISHU_APP_ID"],
+            app_secret=values["FEISHU_APP_SECRET"],
+            table_token=values["FEISHU_TABLE_TOKEN"],
             category=(
-                _first_candidate(
-                    os.environ.get("QIEMAN_FEISHU_CATEGORY", ""), DEFAULT_FEISHU_CATEGORY
-                )
+                _env_value("QIEMAN_FEISHU_CATEGORY", DEFAULT_FEISHU_CATEGORY)
                 or DEFAULT_FEISHU_CATEGORY
             ),
-            upload_images=_env_flag(os.environ.get("QIEMAN_FEISHU_UPLOAD_IMAGES", "")),
+            upload_images=_env_flag(_env_value("QIEMAN_FEISHU_UPLOAD_IMAGES")),
             text_limit=max(500, int(text_limit) if text_limit.isdigit() else 9000),
-            app_id_candidates=values["FEISHU_APP_ID"],
-            app_secret_candidates=values["FEISHU_APP_SECRET"],
-            table_token_candidates=values["FEISHU_TABLE_TOKEN"],
-            doc_token=values["FEISHU_DOC_TOKEN"][0] if values["FEISHU_DOC_TOKEN"] else "",
-            doc_token_candidates=values["FEISHU_DOC_TOKEN"],
+            doc_token=values["FEISHU_DOC_TOKEN"],
         )
 
 
@@ -643,9 +617,8 @@ class FeishuDocsClient:
         result = str(message or "")
         for value in sorted(
             set(
-                self.config.app_id_candidates
-                + self.config.app_secret_candidates
-                + self.config.root_token_candidates
+                (self.config.app_id, self.config.app_secret)
+                + self.config.root_tokens
             ),
             key=len,
             reverse=True,
@@ -655,27 +628,19 @@ class FeishuDocsClient:
         return result
 
     def _tenant_token(self) -> str:
-        pairs = [
-            (app_id, app_secret)
-            for app_id in self.config.app_id_candidates
-            for app_secret in self.config.app_secret_candidates
-        ][: MAX_ENV_CANDIDATES**2]
-        last_error = "未返回访问令牌"
-        for app_id, app_secret in pairs:
-            response = requests.post(
-                f"{FEISHU_BASE_URL}/auth/v3/tenant_access_token/internal/",
-                json={"app_id": app_id, "app_secret": app_secret},
-                timeout=30,
-            )
-            response.raise_for_status()
-            try:
-                data = response.json()
-            except requests.exceptions.JSONDecodeError:
-                last_error = "飞书返回了非 JSON 响应"
-                continue
-            if data.get("code") == 0 and data.get("tenant_access_token"):
-                return str(data["tenant_access_token"])
-            last_error = self._redact(data.get("msg") or data.get("code"))
+        response = requests.post(
+            f"{FEISHU_BASE_URL}/auth/v3/tenant_access_token/internal/",
+            json={"app_id": self.config.app_id, "app_secret": self.config.app_secret},
+            timeout=30,
+        )
+        response.raise_for_status()
+        try:
+            data = response.json()
+        except requests.exceptions.JSONDecodeError as exc:
+            raise RuntimeError("飞书返回了非 JSON 响应") from exc
+        if data.get("code") == 0 and data.get("tenant_access_token"):
+            return str(data["tenant_access_token"])
+        last_error = self._redact(data.get("msg") or data.get("code"))
         raise RuntimeError(
             f"获取飞书 tenant_access_token 失败：{last_error}；"
             "请确认 FEISHU_APP_ID 与 FEISHU_APP_SECRET 来自同一个飞书自建应用，"
@@ -749,12 +714,11 @@ class FeishuDocsClient:
         """解析归档根：依次尝试 wiki 节点 → 空间 ID → 唯一可见空间自动定位。
 
         返回 (space_id, 根节点token)；根为空间时节点token 为空串。
-        候选链兼容白虎 `old&new` 合并的同名变量值。
         """
         if self._root is not None:
             return self._root
-        candidates = self.config.root_token_candidates
-        for token in candidates:
+        tokens = self.config.root_tokens
+        for token in tokens:
             try:
                 result = self.request(
                     "GET",
@@ -772,7 +736,7 @@ class FeishuDocsClient:
                 )
                 self._root = (str(node["space_id"]), str(node["node_token"]))
                 return self._root
-        for token in candidates:
+        for token in tokens:
             try:
                 self.request("GET", f"/wiki/v2/spaces/{token}")
             except RuntimeError:
@@ -796,7 +760,7 @@ class FeishuDocsClient:
         )
         raise RuntimeError(
             f"FEISHU_DOC_TOKEN/FEISHU_TABLE_TOKEN 无法解析为知识库节点或空间"
-            f"（已尝试 {len(candidates)} 个候选值）。"
+            f"（已检查 {len(tokens)} 个归档根配置）。"
             + (
                 f"机器人可见 {len(spaces)} 个知识库空间：{names}；"
                 "请把 FEISHU_DOC_TOKEN 或 FEISHU_TABLE_TOKEN 填为其中一个空间的 ID"

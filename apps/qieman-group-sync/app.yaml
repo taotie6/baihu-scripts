@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qieman-group-sync"
 name: "且慢小组帖子归档"
-version: "1.5.0"
+version: "1.5.1"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-11-17T14:15:00+08:00"
+last_commit: "2026-11-17T14:45:59+08:00"
 template:
   - tag: "QiemanGroupSync"
   - mise_languages: "python@3.12.11"

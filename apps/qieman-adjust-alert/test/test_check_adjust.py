@@ -209,17 +209,25 @@ class BaihuPushConfigTest(unittest.TestCase):
         with patch.dict(os.environ, {"BHPKG_NOTIFY_TOKEN": "token"}, clear=True):
             self.assertIsNone(ALERT.BaihuPushConfig.from_env())
 
-    def test_joined_values_prefer_latest(self) -> None:
+    def test_joined_credentials_are_rejected(self) -> None:
         values = {
             "BHPKG_NOTIFY_TOKEN": "old&new-token",
             "BHPKG_NOTIFY_CHANNEL": "new-channel",
         }
         with patch.dict(os.environ, values, clear=True):
+            with self.assertRaisesRegex(ValueError, "删除重复项"):
+                ALERT.BaihuPushConfig.from_env()
+
+    def test_notify_url_query_parameters_are_preserved(self) -> None:
+        values = {
+            "BHPKG_NOTIFY_TOKEN": "token",
+            "BHPKG_NOTIFY_CHANNEL": "channel",
+            "BHPKG_NOTIFY_URL": "http://baihu/api?foo=1&bar=2",
+        }
+        with patch.dict(os.environ, values, clear=True):
             config = ALERT.BaihuPushConfig.from_env()
         assert config
-        self.assertEqual(config.token, "new-token")
-        self.assertEqual(config.channel, "new-channel")
-        self.assertEqual(config.url, ALERT.DEFAULT_BAIHU_NOTIFY_URL)
+        self.assertEqual(config.url, "http://baihu/api?foo=1&bar=2")
 
 
 class PushBaihuTest(unittest.TestCase):

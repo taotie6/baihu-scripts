@@ -24,7 +24,6 @@ import requests
 
 
 QIEMAN_BASE_URL = "https://qieman.com"
-MAX_ENV_CANDIDATES = 4
 DEFAULT_PLANS = OrderedDict(
     (
         ("LONG_WIN", "长赢指数150计划"),
@@ -447,16 +446,15 @@ def render_task_summary(
     return content
 
 
-def _env_candidates(raw: str, *, maximum: int = MAX_ENV_CANDIDATES) -> tuple[str, ...]:
-    """解析白虎可能用 `&` 合并的同名变量，新值优先。"""
-    values: list[str] = []
-    for value in reversed(str(raw or "").split("&")):
-        value = value.strip()
-        if value and value not in values:
-            values.append(value)
-        if len(values) >= maximum:
-            break
-    return tuple(values)
+def _env_value(name: str, default: str = "") -> str:
+    """读取单个白虎变量；同名记录被拼接时拒绝猜测。"""
+    value = os.environ.get(name, default).strip()
+    if "&" in value:
+        raise ValueError(
+            f"{name} 检测到白虎同名变量拼接符 '&'。"
+            "请在“变量机密”页面删除重复项，只保留一条有效记录。"
+        )
+    return value
 
 
 @dataclass(frozen=True)
@@ -465,33 +463,10 @@ class FeishuConfig:
     app_secret: str
     app_token: str
     token_type: str
-    app_id_candidates: tuple[str, ...] = ()
-    app_secret_candidates: tuple[str, ...] = ()
-    app_token_candidates: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "app_id_candidates", self.app_id_candidates or (self.app_id,)
-        )
-        object.__setattr__(
-            self,
-            "app_secret_candidates",
-            self.app_secret_candidates or (self.app_secret,),
-        )
-        object.__setattr__(
-            self,
-            "app_token_candidates",
-            self.app_token_candidates or (self.app_token,),
-        )
 
     def redact(self, message: Any) -> str:
         result = str(message or "")
-        sensitive = (
-            self.app_id_candidates
-            + self.app_secret_candidates
-            + self.app_token_candidates
-        )
-        for value in sorted(set(sensitive), key=len, reverse=True):
+        for value in (self.app_id, self.app_secret, self.app_token):
             if value:
                 result = result.replace(value, "[REDACTED]")
         return result
@@ -499,13 +474,9 @@ class FeishuConfig:
     @classmethod
     def from_env(cls) -> FeishuConfig | None:
         values = {
-            "FEISHU_APP_ID": _env_candidates(os.environ.get("FEISHU_APP_ID", "")),
-            "FEISHU_APP_SECRET": _env_candidates(
-                os.environ.get("FEISHU_APP_SECRET", "")
-            ),
-            "FEISHU_TABLE_TOKEN": _env_candidates(
-                os.environ.get("FEISHU_TABLE_TOKEN", "")
-            ),
+            "FEISHU_APP_ID": _env_value("FEISHU_APP_ID"),
+            "FEISHU_APP_SECRET": _env_value("FEISHU_APP_SECRET"),
+            "FEISHU_TABLE_TOKEN": _env_value("FEISHU_TABLE_TOKEN"),
         }
         configured = [key for key, value in values.items() if value]
         if not configured:
@@ -513,18 +484,14 @@ class FeishuConfig:
         missing = [key for key, value in values.items() if not value]
         if missing:
             raise ValueError("飞书为可选功能；启用时还需配置 " + "、".join(missing))
-        token_types = _env_candidates(os.environ.get("FEISHU_TOKEN_TYPE", "bitable"))
-        token_type = (token_types[0] if token_types else "bitable").lower()
+        token_type = _env_value("FEISHU_TOKEN_TYPE", "bitable").lower()
         if token_type not in {"bitable", "wiki"}:
             raise ValueError("FEISHU_TOKEN_TYPE 只能是 bitable 或 wiki")
         return cls(
-            app_id=values["FEISHU_APP_ID"][0],
-            app_secret=values["FEISHU_APP_SECRET"][0],
-            app_token=values["FEISHU_TABLE_TOKEN"][0],
+            app_id=values["FEISHU_APP_ID"],
+            app_secret=values["FEISHU_APP_SECRET"],
+            app_token=values["FEISHU_TABLE_TOKEN"],
             token_type=token_type,
-            app_id_candidates=values["FEISHU_APP_ID"],
-            app_secret_candidates=values["FEISHU_APP_SECRET"],
-            app_token_candidates=values["FEISHU_TABLE_TOKEN"],
         )
 
 
@@ -538,52 +505,32 @@ class FeishuBitableClient:
         self.access_token = ""
         self._app_token_validated = False
         if config.token_type == "wiki":
-            last_error = ""
-            for position, token in enumerate(config.app_token_candidates, start=1):
-                log(
-                    f"飞书：正在解析 Wiki Token 候选 "
-                    f"{position}/{len(config.app_token_candidates)}（{mask_token(token)}）"
-                )
-                try:
-                    self.app_token = self._resolve_wiki_token(token)
-                    self._app_token_validated = True
-                    log(
-                        "飞书：Wiki Token 已解析为多维表格 "
-                        + mask_token(self.app_token)
-                    )
-                    break
-                except Exception as exc:
-                    last_error = config.redact(exc)
-            else:
+            try:
+                self.app_token = self._resolve_wiki_token(config.app_token)
+            except Exception as exc:
                 raise RuntimeError(
-                    f"飞书 Wiki Token 候选均解析失败：{last_error}"
-                )
+                    f"飞书 Wiki Token 解析失败：{config.redact(exc)}"
+                ) from exc
+            self._app_token_validated = True
+            log("飞书：Wiki Token 已解析为多维表格 " + mask_token(self.app_token))
 
     def _tenant_token(self) -> str:
-        pairs = [
-            (app_id, app_secret)
-            for app_id in self.config.app_id_candidates
-            for app_secret in self.config.app_secret_candidates
-        ][: MAX_ENV_CANDIDATES**2]
-        last_error = "未返回访问令牌"
-        for app_id, app_secret in pairs:
-            response = requests.post(
-                f"{self.BASE_URL}/auth/v3/tenant_access_token/internal/",
-                json={"app_id": app_id, "app_secret": app_secret},
-                timeout=30,
-            )
-            response.raise_for_status()
-            try:
-                data = response.json()
-            except requests.exceptions.JSONDecodeError:
-                last_error = "飞书返回了非 JSON 响应"
-                continue
-            if data.get("code") == 0 and data.get("tenant_access_token"):
-                return str(data["tenant_access_token"])
-            last_error = self.config.redact(data.get("msg") or data.get("code"))
+        response = requests.post(
+            f"{self.BASE_URL}/auth/v3/tenant_access_token/internal/",
+            json={"app_id": self.config.app_id, "app_secret": self.config.app_secret},
+            timeout=30,
+        )
+        response.raise_for_status()
+        try:
+            data = response.json()
+        except requests.exceptions.JSONDecodeError as exc:
+            raise RuntimeError("飞书返回了非 JSON 响应") from exc
+        if data.get("code") == 0 and data.get("tenant_access_token"):
+            return str(data["tenant_access_token"])
+        last_error = self.config.redact(data.get("msg") or data.get("code"))
         raise RuntimeError(
             "获取飞书 tenant_access_token 失败："
-            f"{last_error}（已尝试 {len(pairs)} 组候选凭据）。"
+            f"{last_error}。"
             "请确认 FEISHU_APP_ID 与 FEISHU_APP_SECRET 来自同一个飞书自建应用；"
             "此步骤发生在 Wiki Token 解析之前，与 FEISHU_TABLE_TOKEN 无关"
         )
@@ -645,20 +592,14 @@ class FeishuBitableClient:
 
     def list_tables(self) -> list[dict[str, Any]]:
         if self.config.token_type == "bitable" and not self._app_token_validated:
-            last_error = ""
-            for position, token in enumerate(self.config.app_token_candidates, start=1):
-                self.app_token = token
-                try:
-                    items = self._list_tables()
-                    self._app_token_validated = True
-                    if position > 1:
-                        log(f"飞书：已切换到可用的 Table Token 候选 {position}")
-                    return items
-                except Exception as exc:
-                    last_error = self.config.redact(exc)
-            raise RuntimeError(
-                f"飞书 Table Token 候选均不可用：{last_error}"
-            )
+            try:
+                items = self._list_tables()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"飞书 Table Token 不可用：{self.config.redact(exc)}"
+                ) from exc
+            self._app_token_validated = True
+            return items
         return self._list_tables()
 
     def _list_tables(self) -> list[dict[str, Any]]:

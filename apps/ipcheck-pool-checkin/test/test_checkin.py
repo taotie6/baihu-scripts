@@ -145,25 +145,14 @@ class LoadAccountsTest(unittest.TestCase):
                     [CHECKIN.Account("账号1", "user", "one")],
                 )
 
-    def test_merges_duplicate_panel_secrets_joined_with_ampersand(self) -> None:
+    def test_rejects_duplicate_panel_secrets_joined_with_ampersand(self) -> None:
         first = '[{"label":"账号1","account":"user1","password":"one"}]'
         second = '[{"label":"账号2","account":"user2","password":"two"}]'
 
-        self.assertEqual(
-            self.load({"IPCHECK_POOL_ACCOUNTS": first + "&" + second}),
-            [
-                CHECKIN.Account("账号1", "user1", "one"),
-                CHECKIN.Account("账号2", "user2", "two"),
-            ],
-        )
-
-    def test_accepts_empty_duplicate_panel_secret_before_json(self) -> None:
-        document = '[{"label":"账号1","account":"user1","password":"one"}]'
-
-        self.assertEqual(
-            self.load({"IPCHECK_POOL_ACCOUNTS": "&" + document}),
-            [CHECKIN.Account("账号1", "user1", "one")],
-        )
+        for value in (first + "&" + second, "&" + first):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "删除重复项"):
+                    self.load({"IPCHECK_POOL_ACCOUNTS": value})
 
     def test_ampersand_bracket_inside_valid_json_is_not_split(self) -> None:
         document = '[{"label":"账号1","account":"user1","password":"one&[two]"}]'
@@ -175,7 +164,7 @@ class LoadAccountsTest(unittest.TestCase):
 
     def test_accepts_backslash_line_continuations_and_unknown_prefix(self) -> None:
         value = (
-            '&unknown-wrapper\n'
+            'unknown-wrapper\n'
             '[{"label":"账号1","account":"user1","password":"one"},\
 '
             '{"label":"账号2","account":"user2","password":"two"}]'
