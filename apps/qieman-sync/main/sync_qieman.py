@@ -767,50 +767,72 @@ class FeishuBitableClient:
         history_table = self.ensure_table(history_name, HISTORY_FIELDS, tables)
         history_added_fields = self.ensure_fields(history_table, HISTORY_FIELDS)
         log(f"飞书：历史表字段已就绪（补建 {history_added_fields}，已有字段未改动）")
-        existing_history = {
-            (int(_number(fields.get("调仓ID"))), str(fields.get("基金代码")))
-            for record in self.list_records(history_table)
-            if isinstance((fields := record.get("fields")), dict)
-            and fields.get("调仓ID") is not None
-            and fields.get("基金代码")
-        }
+        existing_history: dict[tuple[int, str], dict[str, Any]] = {}
+        for record in self.list_records(history_table):
+            if not record.get("record_id"):
+                continue
+            fields = record.get("fields")
+            if not isinstance(fields, dict):
+                continue
+            if fields.get("调仓ID") is None or not fields.get("基金代码"):
+                continue
+            key = (int(_number(fields.get("调仓ID"))), str(fields.get("基金代码")))
+            existing_history[key] = {
+                "record_id": str(record.get("record_id")),
+                "nav": _number(fields.get("成交净值")),
+            }
         log(
             f"飞书：历史表已有 {len(existing_history)} 条，"
             f"且慢返回 {len(report['history'])} 条"
         )
+
+        def history_fields(item: dict[str, Any]) -> dict[str, Any]:
+            return {
+                "调仓ID": item["adjustment_id"],
+                "基金代码": item["fund_code"],
+                "基金名称": item["fund_name"],
+                "操作类型": ORDER_CODE_MAP.get(item["order_code"], item["order_code"]),
+                "品种": item["variety"],
+                "成交净值": item["nav"],
+                "净值日期": item["nav_date"] or None,
+                "交易份数": item["trade_unit"],
+                "交易日期": item["adjust_txn_date"] or None,
+            }
+
         history_creates: list[dict[str, Any]] = []
+        history_updates: list[dict[str, Any]] = []
         skipped_history = 0
         for item in report["history"]:
             key = (item["adjustment_id"], item["fund_code"])
-            if key in existing_history:
-                skipped_history += 1
+            existing = existing_history.get(key)
+            if existing:
+                # 且慢未成交时成交净值可能先返回 0，等实际成交后需要补更新。
+                if existing["nav"] == 0:
+                    history_updates.append(
+                        {
+                            "record_id": existing["record_id"],
+                            "fields": history_fields(item),
+                        }
+                    )
+                else:
+                    skipped_history += 1
                 continue
-            history_creates.append(
-                {
-                    "fields": {
-                        "调仓ID": item["adjustment_id"],
-                        "基金代码": item["fund_code"],
-                        "基金名称": item["fund_name"],
-                        "操作类型": ORDER_CODE_MAP.get(
-                            item["order_code"], item["order_code"]
-                        ),
-                        "品种": item["variety"],
-                        "成交净值": item["nav"],
-                        "净值日期": item["nav_date"] or None,
-                        "交易份数": item["trade_unit"],
-                        "交易日期": item["adjust_txn_date"] or None,
-                    }
-                }
-            )
-            existing_history.add(key)
+            history_creates.append({"fields": history_fields(item)})
+            existing_history[key] = {
+                "record_id": "",
+                "nav": _number(item["nav"]),
+            }
         self.batch_create(history_table, history_creates)
+        self.batch_update(history_table, history_updates)
         log(
             f"飞书：历史同步完成，新增 {len(history_creates)}，"
+            f"补更新 {len(history_updates)}（成交净值为0），"
             f"跳过 {skipped_history}（已有）"
         )
         return (
             f"{report['name']} 持仓新增 {len(creates)}、更新 {len(updates)}，"
-            f"历史新增 {len(history_creates)}、跳过 {skipped_history}"
+            f"历史新增 {len(history_creates)}、补更新 {len(history_updates)}、"
+            f"跳过 {skipped_history}"
         )
 
 

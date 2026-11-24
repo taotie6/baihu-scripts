@@ -319,7 +319,7 @@ class FeishuSyncTest(unittest.TestCase):
             [
                 {
                     "record_id": "rec-history",
-                    "fields": {"调仓ID": 9, "基金代码": "000001"},
+                    "fields": {"调仓ID": 9, "基金代码": "000001", "成交净值": 1.2},
                 }
             ],
         ]
@@ -331,10 +331,64 @@ class FeishuSyncTest(unittest.TestCase):
             result = self.client.sync_report(report, tables)
 
         self.assertIn("持仓新增 1、更新 1", result)
-        self.assertIn("历史新增 1、跳过 1", result)
+        self.assertIn("历史新增 1、补更新 0、跳过 1", result)
         self.assertEqual(len(batch_create.call_args_list[0].args[1]), 1)
         self.assertEqual(len(batch_create.call_args_list[1].args[1]), 1)
-        self.assertEqual(len(batch_update.call_args.args[1]), 1)
+        self.assertEqual(len(batch_update.call_args_list[0].args[1]), 1)
+
+    def test_sync_report_updates_history_when_nav_is_zero(self) -> None:
+        report = {
+            "code": "LONG_WIN",
+            "name": "测试计划",
+            "all_funds": [
+                {
+                    "fund_code": "000001",
+                    "fund_name": "基金一",
+                    "class_name": "A股",
+                    "target_percent": 0.4,
+                    "plan_unit": 4,
+                    "nav": 1.2,
+                    "nav_date": 1760000000000,
+                    "unit_value": 1,
+                }
+            ],
+            "history": [
+                {
+                    "adjustment_id": 9,
+                    "fund_code": "000001",
+                    "fund_name": "基金一",
+                    "order_code": "022",
+                    "variety": "基金一",
+                    "nav": 1.2,
+                    "nav_date": 1760000000000,
+                    "trade_unit": 1,
+                    "adjust_txn_date": 1760000000000,
+                }
+            ],
+        }
+        tables = {"测试计划": "tbl-holding", "测试计划-买卖记录": "tbl-history"}
+        records = [
+            [],
+            [
+                {
+                    "record_id": "rec-history",
+                    "fields": {"调仓ID": 9, "基金代码": "000001", "成交净值": 0},
+                }
+            ],
+        ]
+        with patch.object(self.client, "ensure_fields", return_value=0), patch.object(
+            self.client, "list_records", side_effect=records
+        ), patch.object(self.client, "batch_create"), patch.object(
+            self.client, "batch_update"
+        ) as batch_update:
+            result = self.client.sync_report(report, tables)
+
+        self.assertIn("持仓新增 1、更新 0", result)
+        self.assertIn("历史新增 0、补更新 1、跳过 0", result)
+        history_updates = batch_update.call_args_list[1].args[1]
+        self.assertEqual(len(history_updates), 1)
+        self.assertEqual(history_updates[0]["record_id"], "rec-history")
+        self.assertEqual(history_updates[0]["fields"]["成交净值"], 1.2)
 
     def test_wiki_resolution_logs_mask_tokens(self) -> None:
         wiki_token = "wikcn-sensitive-full-token"
