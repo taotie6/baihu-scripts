@@ -237,6 +237,7 @@ class QiemanClient:
         "/pmdj/v2/long-win/plan",
         "/pmdj/v2/long-win/plan/history",
         "/pmdj/v2/asset/detail",
+        "/pmdj/v2/long-win",
         "/pmdj/v2/long-win/ca/dividend-methods",
     }
 
@@ -347,7 +348,7 @@ class QiemanClient:
         return [item for item in data if isinstance(item, dict)]
 
     def get_capital_account_id(self, plan_code: str) -> str:
-        """从账户资产摘要匹配计划资金账户，不输出账户标识。"""
+        """按前端链路匹配计划资金账户，不输出任何账户标识。"""
         if plan_code in self._capital_account_ids:
             return self._capital_account_ids[plan_code]
         data = self._get(
@@ -355,36 +356,60 @@ class QiemanClient:
             params={"all": "true"},
             referer=f"{QIEMAN_BASE_URL}/assets",
         )
-        matches: set[str] = set()
+        capital_account_ids: set[str] = set()
+        user_property_ids: set[str] = set()
 
-        def visit(value: Any) -> None:
+        def add_identifier(target: set[str], value: Any) -> None:
+            if value is not None and str(value).strip():
+                target.add(str(value).strip())
+
+        def visit(value: Any, prod_code: str = "") -> None:
             if isinstance(value, dict):
-                if str(value.get("prodCode") or "") == plan_code:
-                    candidates = [value.get("capitalAccountId"), value.get("caId")]
+                current_prod_code = str(value.get("prodCode") or prod_code)
+                if current_prod_code == plan_code:
+                    add_identifier(user_property_ids, value.get("id"))
+                    add_identifier(
+                        capital_account_ids, value.get("capitalAccountId")
+                    )
+                    add_identifier(capital_account_ids, value.get("caId"))
                     ca_asset = value.get("caAsset")
                     if isinstance(ca_asset, dict):
-                        candidates.extend(
-                            ca_asset.get(key)
-                            for key in ("capitalAccountId", "caId", "id")
-                        )
-                    for candidate in candidates:
-                        if candidate is not None and str(candidate).strip():
-                            matches.add(str(candidate).strip())
+                        for key in ("capitalAccountId", "caId", "id"):
+                            add_identifier(capital_account_ids, ca_asset.get(key))
                 for child in value.values():
-                    visit(child)
+                    visit(child, current_prod_code)
             elif isinstance(value, list):
                 for child in value:
-                    visit(child)
+                    visit(child, prod_code)
 
         visit(data)
-        if not matches:
-            raise RuntimeError(
-                f"账户中未找到计划 {plan_code} 的资金账户；"
-                "请确认 Token 对应账户已持有该计划"
-            )
-        if len(matches) > 1:
+        if len(capital_account_ids) > 1:
             raise RuntimeError(f"计划 {plan_code} 匹配到多个资金账户，无法自动选择")
-        self._capital_account_ids[plan_code] = matches.pop()
+        if capital_account_ids:
+            self._capital_account_ids[plan_code] = capital_account_ids.pop()
+            return self._capital_account_ids[plan_code]
+
+        # 前端真实链路：资产摘要只有 userPropertyId 时，再通过长赢账户接口
+        # 获取 longWin.capitalAccountId。逐个查询候选属性，不输出其标识。
+        for user_property_id in sorted(user_property_ids):
+            long_win = self._get(
+                "/pmdj/v2/long-win",
+                params={
+                    "userPropertyId": user_property_id,
+                    "extClassify": "true",
+                },
+                referer=f"{QIEMAN_BASE_URL}/longwin/asset",
+            )
+            if isinstance(long_win, dict):
+                add_identifier(capital_account_ids, long_win.get("capitalAccountId"))
+        if not capital_account_ids:
+            raise RuntimeError(
+                f"无法自动匹配计划 {plan_code} 的资金账户；"
+                "请重新登录且慢并更新 Token 后重试"
+            )
+        if len(capital_account_ids) > 1:
+            raise RuntimeError(f"计划 {plan_code} 匹配到多个资金账户，无法自动选择")
+        self._capital_account_ids[plan_code] = capital_account_ids.pop()
         return self._capital_account_ids[plan_code]
 
     def get_plan_dividend_methods(self, plan_code: str) -> dict[str, str]:

@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qieman-sync"
 name: "且慢顾投计划同步"
-version: "1.2.0"
+version: "1.2.1"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-11-26T11:56:00+08:00"
+last_commit: "2026-11-26T13:44:15+08:00"
 template:
   - tag: "QiemanSync"
   - mise_languages: "python@3.12.11"
