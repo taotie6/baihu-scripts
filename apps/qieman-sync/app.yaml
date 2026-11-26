@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qieman-sync"
 name: "且慢顾投计划同步"
-version: "1.2.2"
+version: "1.3.0"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-11-26T13:55:49+08:00"
+last_commit: "2026-11-26T14:07:49+08:00"
 template:
   - tag: "QiemanSync"
   - mise_languages: "python@3.12.11"
@@ -103,19 +103,32 @@ sync_rules:
       command: "python sync_qieman.py"
       default_cron: "0 30 20 * * 1-5"
       enabled: true
+    - id: "check-qieman-token-expiry"
+      name: "且慢 Token 到期提醒"
+      source: "repo"
+      language: "{mise_languages}"
+      command: "python sync_qieman.py --check-token-expiry"
+      default_cron: "0 0 9 * * *"
+      enabled: true
 scenarios:
   - id: "notify-only"
     name: "数据整理"
-    description: "工作日 20:30 获取并整理数据；请在白虎任务通知配置中绑定渠道。"
+    description: "工作日 20:30 整理数据，并每天 09:00 检查 Token 是否将在 7/3 天后到期。"
     default: true
     task_presets:
       sync-qieman:
         enabled: true
         cron: "0 30 20 * * 1-5"
+      check-qieman-token-expiry:
+        enabled: true
+        cron: "0 0 9 * * *"
   - id: "notify-and-feishu"
     name: "飞书同步"
-    description: "配置全部 FEISHU_* 机密变量后增量同步飞书；通知由白虎任务通知配置统一处理。"
+    description: "配置全部 FEISHU_* 机密变量后增量同步飞书，并每天检查 Token 到期时间。"
     task_presets:
       sync-qieman:
         enabled: true
         cron: "0 30 20 * * 1-5"
+      check-qieman-token-expiry:
+        enabled: true
+        cron: "0 0 9 * * *"

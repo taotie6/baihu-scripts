@@ -333,6 +333,47 @@ class FeishuClientErrorTest(unittest.TestCase):
         self.assertNotIn(secret, message)
 
 
+class TokenExpiryReminderTest(unittest.TestCase):
+    def test_notifies_exactly_seven_and_three_days_before_expiry(self) -> None:
+        timezone = QIEMAN.ZoneInfo("Asia/Shanghai")
+        now = QIEMAN.datetime(2026, 11, 26, 9, 0, tzinfo=timezone)
+        for days in (7, 3):
+            expires_at = (
+                QIEMAN.datetime(2026, 12, 3, 12, 0, tzinfo=timezone)
+                if days == 7
+                else QIEMAN.datetime(2026, 11, 29, 12, 0, tzinfo=timezone)
+            )
+            line = QIEMAN.token_expiry_notification(
+                make_token(expires_at.timestamp()), now=now
+            )
+            self.assertTrue(line.startswith("NOTIFY_TOKEN_EXPIRY=1"))
+            self.assertIn(f"{days} 天后到期", line)
+
+    def test_does_not_notify_on_other_days(self) -> None:
+        timezone = QIEMAN.ZoneInfo("Asia/Shanghai")
+        now = QIEMAN.datetime(2026, 11, 26, 9, 0, tzinfo=timezone)
+        expires_at = QIEMAN.datetime(2026, 12, 6, 12, 0, tzinfo=timezone)
+        line = QIEMAN.token_expiry_notification(
+            make_token(expires_at.timestamp()), now=now
+        )
+        self.assertTrue(line.startswith("NOTIFY_TOKEN_EXPIRY=0"))
+        self.assertIn("10 天", line)
+
+    def test_expired_or_missing_tokens_have_explicit_markers(self) -> None:
+        timezone = QIEMAN.ZoneInfo("Asia/Shanghai")
+        now = QIEMAN.datetime(2026, 11, 26, 9, 0, tzinfo=timezone)
+        expired = QIEMAN.datetime(2026, 11, 25, 12, 0, tzinfo=timezone)
+        line = QIEMAN.token_expiry_notification(
+            make_token(expired.timestamp()), now=now
+        )
+        self.assertTrue(line.startswith("NOTIFY_TOKEN_EXPIRY=1"))
+        self.assertIn("已过期", line)
+        self.assertEqual(
+            QIEMAN.token_expiry_notification(""),
+            "NOTIFY_TOKEN_EXPIRY=0 未配置 QIEMAN_ACCESS_TOKEN",
+        )
+
+
 class MainExitStatusTest(unittest.TestCase):
     def test_returns_nonzero_when_qieman_fetch_fails(self) -> None:
         args = SimpleNamespace(

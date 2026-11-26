@@ -261,8 +261,8 @@ class QiemanClient:
         return bool(self.access_token)
 
     @staticmethod
-    def _validate_access_token(token: str) -> None:
-        """仅解析 JWT 有效期；签名校验由且慢服务端完成。"""
+    def token_expiration(token: str) -> float:
+        """解析 JWT 过期时间；签名校验由且慢服务端完成。"""
         parts = token.split(".")
         try:
             if len(parts) != 3:
@@ -272,11 +272,17 @@ class QiemanClient:
             if not isinstance(claims, dict):
                 raise ValueError("invalid JWT claims")
             expires_at = float(claims["exp"])
+            if not math.isfinite(expires_at):
+                raise ValueError("invalid JWT expiry")
+            return expires_at
         except (ValueError, TypeError, KeyError, UnicodeDecodeError, json.JSONDecodeError):
             raise ValueError(
                 "QIEMAN_ACCESS_TOKEN 格式异常，应为包含有效期的 JWT access_token"
             ) from None
-        if expires_at <= time.time():
+
+    @classmethod
+    def _validate_access_token(cls, token: str) -> None:
+        if cls.token_expiration(token) <= time.time():
             raise ValueError("QIEMAN_ACCESS_TOKEN 已过期，请重新登录且慢后更新")
 
     @staticmethod
@@ -981,6 +987,39 @@ def sync_feishu(reports: list[dict[str, Any]], disabled: bool) -> str:
     return "；".join(results)
 
 
+def token_expiry_notification(
+    token: str, *, now: datetime | None = None
+) -> str:
+    """生成白虎日志变量门控行，不包含 Token 或账户信息。"""
+    if not token.strip():
+        return "NOTIFY_TOKEN_EXPIRY=0 未配置 QIEMAN_ACCESS_TOKEN"
+    try:
+        expires_at = QiemanClient.token_expiration(token)
+    except ValueError:
+        return "NOTIFY_TOKEN_EXPIRY=1 QIEMAN_ACCESS_TOKEN 格式异常，请重新获取"
+    timezone = _timezone()
+    expires_on = datetime.fromtimestamp(expires_at, tz=timezone).date()
+    current = (now or datetime.now(tz=timezone)).astimezone(timezone)
+    days_left = (expires_on - current.date()).days
+    if days_left < 0:
+        return "NOTIFY_TOKEN_EXPIRY=1 且慢访问令牌已过期，请重新登录并更新"
+    if days_left == 0:
+        return "NOTIFY_TOKEN_EXPIRY=1 且慢访问令牌今天到期，请立即更新"
+    if days_left in {7, 3}:
+        return f"NOTIFY_TOKEN_EXPIRY=1 且慢访问令牌将在 {days_left} 天后到期"
+    return f"NOTIFY_TOKEN_EXPIRY=0 且慢访问令牌剩余 {days_left} 天"
+
+
+def check_token_expiry() -> int:
+    try:
+        token = _env_value("QIEMAN_ACCESS_TOKEN")
+    except ValueError as exc:
+        print(f"NOTIFY_TOKEN_EXPIRY=1 {exc}", flush=True)
+        return 0
+    print(token_expiry_notification(token), flush=True)
+    return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="抓取且慢顾投计划并可选同步飞书")
     parser.add_argument(
@@ -996,6 +1035,11 @@ def parse_args() -> argparse.Namespace:
         ),
         help="任务日志摘要中显示的最近调仓批次数，默认 3",
     )
+    parser.add_argument(
+        "--check-token-expiry",
+        action="store_true",
+        help="仅检查且慢 Token 到期日，输出白虎通知门控标记",
+    )
     parser.add_argument("--no-feishu", action="store_true", help="本次不写飞书")
     parser.add_argument(
         "--no-notify",
@@ -1008,6 +1052,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    if getattr(args, "check_token_expiry", False):
+        return check_token_expiry()
     try:
         plans = parse_plans(args.plans)
     except ValueError as exc:
