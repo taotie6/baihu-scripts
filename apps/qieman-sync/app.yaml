@@ -1,10 +1,10 @@
 spec_version: "v1"
 id: "qieman-sync"
 name: "且慢顾投计划同步"
-version: "1.1.1"
+version: "1.2.0"
 author: "taotie6"
 category: "投资工具"
-last_commit: "2026-11-17T14:45:59+08:00"
+last_commit: "2026-11-26T11:56:00+08:00"
 template:
   - tag: "QiemanSync"
   - mise_languages: "python@3.12.11"
@@ -39,6 +39,11 @@ setup:
     mise exec {mise_languages} -- python -m pip install -r "{app_dir}/repo/apps/qieman-sync/main/requirements.txt"
     mise exec {mise_languages} -- python -m py_compile "{app_dir}/repo/apps/qieman-sync/main/sync_qieman.py"
 env_schema:
+  - key: "QIEMAN_ACCESS_TOKEN"
+    label: "且慢访问令牌"
+    type: "secret"
+    required: false
+    description: "可选；且慢 access_token 原始 JWT（不要包含 Bearer 前缀），用于只读获取账户当前分红方式，过期后需重新登录更新。"
   - key: "QIEMAN_PLANS"
     label: "且慢计划"
     type: "string"

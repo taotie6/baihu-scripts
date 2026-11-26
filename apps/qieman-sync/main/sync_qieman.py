@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import math
 import os
@@ -31,6 +32,7 @@ DEFAULT_PLANS = OrderedDict(
     )
 )
 ORDER_CODE_MAP = {"022": "买入", "024": "卖出"}
+DIVIDEND_METHOD_MAP = {"0": "红利再投", "1": "现金分红"}
 TEXT_FIELD = 1
 NUMBER_FIELD = 2
 SELECT_FIELD = 3
@@ -86,6 +88,17 @@ HOLDING_FIELDS = [
         "type": NUMBER_FIELD,
         "desc": "且慢公开计划中的主理人持有单价。",
         "property": {"formatter": "0.0000"},
+    },
+    {
+        "name": "分红方式",
+        "type": SELECT_FIELD,
+        "desc": "且慢账户当前生效的分红方式（0=红利再投，1=现金分红）；未配置访问令牌时留空。",
+        "property": {
+            "options": [
+                {"name": "红利再投", "color": 0},
+                {"name": "现金分红", "color": 1},
+            ]
+        },
     },
 ]
 HISTORY_FIELDS = [
@@ -218,10 +231,53 @@ def mask_token(value: str) -> str:
 
 
 class QiemanClient:
-    """且慢公开页面接口的同步客户端。"""
+    """且慢公开及只读账户接口的同步客户端。"""
 
-    def __init__(self, session: requests.Session | None = None) -> None:
+    ALLOWED_GET_PATHS = {
+        "/pmdj/v2/long-win/plan",
+        "/pmdj/v2/long-win/plan/history",
+        "/pmdj/v2/asset/detail",
+        "/pmdj/v2/long-win/ca/dividend-methods",
+    }
+
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        access_token: str | None = None,
+    ) -> None:
         self.session = session or requests.Session()
+        configured_token = (
+            _env_value("QIEMAN_ACCESS_TOKEN")
+            if access_token is None
+            else access_token
+        )
+        self.access_token = configured_token.strip()
+        if self.access_token:
+            self._validate_access_token(self.access_token)
+        self._capital_account_ids: dict[str, str] = {}
+
+    @property
+    def has_access_token(self) -> bool:
+        return bool(self.access_token)
+
+    @staticmethod
+    def _validate_access_token(token: str) -> None:
+        """仅解析 JWT 有效期；签名校验由且慢服务端完成。"""
+        parts = token.split(".")
+        try:
+            if len(parts) != 3:
+                raise ValueError("invalid JWT")
+            payload = parts[1] + "=" * (-len(parts[1]) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload).decode("utf-8"))
+            if not isinstance(claims, dict):
+                raise ValueError("invalid JWT claims")
+            expires_at = float(claims["exp"])
+        except (ValueError, TypeError, KeyError, UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError(
+                "QIEMAN_ACCESS_TOKEN 格式异常，应为包含有效期的 JWT access_token"
+            ) from None
+        if expires_at <= time.time():
+            raise ValueError("QIEMAN_ACCESS_TOKEN 已过期，请重新登录且慢后更新")
 
     @staticmethod
     def _sign() -> str:
@@ -233,7 +289,7 @@ class QiemanClient:
         return f"{timestamp}{digest}"
 
     def _headers(self, referer: str) -> dict[str, str]:
-        return {
+        headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Origin": QIEMAN_BASE_URL,
@@ -241,15 +297,30 @@ class QiemanClient:
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
             "X-sign": self._sign(),
         }
+        if self.access_token:
+            headers["Authorization"] = f"Bearer {self.access_token}"
+        return headers
 
-    def _get(self, path: str, *, params: dict[str, str], referer: str) -> Any:
-        response = self.session.get(
-            QIEMAN_BASE_URL + path,
-            params=params,
-            headers=self._headers(referer),
-            timeout=30,
-        )
-        response.raise_for_status()
+    def _get(self, path: str, *, params: dict[str, Any], referer: str) -> Any:
+        if path not in self.ALLOWED_GET_PATHS:
+            raise RuntimeError(f"且慢只读客户端拒绝访问未授权接口：{path}")
+        try:
+            response = self.session.get(
+                QIEMAN_BASE_URL + path,
+                params=params,
+                headers=self._headers(referer),
+                timeout=30,
+            )
+            response.raise_for_status()
+        except requests.HTTPError:
+            # 查询参数含资金账户 ID，不能把 requests 的完整 URL 写入日志。
+            raise RuntimeError(
+                f"且慢接口 {path} 请求失败：HTTP {response.status_code}"
+            ) from None
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                f"且慢接口 {path} 请求失败：{type(exc).__name__}"
+            ) from None
         try:
             return response.json()
         except requests.exceptions.JSONDecodeError as exc:
@@ -275,12 +346,77 @@ class QiemanClient:
             raise RuntimeError(f"计划 {plan_code} 的调仓响应格式异常")
         return [item for item in data if isinstance(item, dict)]
 
+    def get_capital_account_id(self, plan_code: str) -> str:
+        """从账户资产摘要匹配计划资金账户，不输出账户标识。"""
+        if plan_code in self._capital_account_ids:
+            return self._capital_account_ids[plan_code]
+        data = self._get(
+            "/pmdj/v2/asset/detail",
+            params={"all": "true"},
+            referer=f"{QIEMAN_BASE_URL}/assets",
+        )
+        matches: set[str] = set()
+
+        def visit(value: Any) -> None:
+            if isinstance(value, dict):
+                if str(value.get("prodCode") or "") == plan_code:
+                    candidates = [value.get("capitalAccountId"), value.get("caId")]
+                    ca_asset = value.get("caAsset")
+                    if isinstance(ca_asset, dict):
+                        candidates.extend(
+                            ca_asset.get(key)
+                            for key in ("capitalAccountId", "caId", "id")
+                        )
+                    for candidate in candidates:
+                        if candidate is not None and str(candidate).strip():
+                            matches.add(str(candidate).strip())
+                for child in value.values():
+                    visit(child)
+            elif isinstance(value, list):
+                for child in value:
+                    visit(child)
+
+        visit(data)
+        if not matches:
+            raise RuntimeError(
+                f"账户中未找到计划 {plan_code} 的资金账户；"
+                "请确认 Token 对应账户已持有该计划"
+            )
+        if len(matches) > 1:
+            raise RuntimeError(f"计划 {plan_code} 匹配到多个资金账户，无法自动选择")
+        self._capital_account_ids[plan_code] = matches.pop()
+        return self._capital_account_ids[plan_code]
+
+    def get_plan_dividend_methods(self, plan_code: str) -> dict[str, str]:
+        capital_account_id = self.get_capital_account_id(plan_code)
+        data = self._get(
+            "/pmdj/v2/long-win/ca/dividend-methods",
+            params={"capitalAccountId": capital_account_id},
+            referer=f"{QIEMAN_BASE_URL}/longwin/asset",
+        )
+        if not isinstance(data, list):
+            raise RuntimeError(f"计划 {plan_code} 的分红方式响应格式异常")
+        methods: dict[str, str] = {}
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            raw_fund = item.get("fund")
+            if not isinstance(raw_fund, dict):
+                continue
+            fund_code = str(raw_fund.get("fundCode") or "")
+            # modifyingDividendMethod 尚未生效，只同步当前 dividendMethod。
+            method = DIVIDEND_METHOD_MAP.get(str(item.get("dividendMethod")))
+            if fund_code and method:
+                methods[fund_code] = method
+        return methods
+
 
 def organise_plan(
     code: str,
     name: str,
     composition: dict[str, Any],
     history: list[dict[str, Any]],
+    dividend_methods: dict[str, str] | None = None,
     *,
     history_limit: int,
 ) -> dict[str, Any]:
@@ -305,8 +441,9 @@ def organise_plan(
             raw_fund = raw_item.get("fund") or {}
             if not isinstance(raw_fund, dict):
                 raw_fund = {}
+            fund_code = str(raw_fund.get("fundCode") or "")
             fund = {
-                "fund_code": str(raw_fund.get("fundCode") or ""),
+                "fund_code": fund_code,
                 "fund_name": str(raw_fund.get("fundName") or ""),
                 "class_name": class_name,
                 "target_percent": _number(raw_item.get("percent")),
@@ -318,6 +455,7 @@ def organise_plan(
                     if raw_item.get("unitValue") is None
                     else _number(raw_item.get("unitValue"))
                 ),
+                "dividend_type": (dividend_methods or {}).get(fund_code),
             }
             if fund["fund_code"]:
                 funds.append(fund)
@@ -752,6 +890,7 @@ class FeishuBitableClient:
                 "单位净值": fund["nav"],
                 "净值日期": fund["nav_date"] or None,
                 "主理人持有单价": fund["unit_value"],
+                "分红方式": fund.get("dividend_type"),
             }
             record_id = existing_holdings.get(fund["fund_code"])
             if record_id:
@@ -887,7 +1026,13 @@ def main() -> int:
         log(f"ERROR: {exc}", error=True)
         return 2
 
-    client = QiemanClient()
+    try:
+        client = QiemanClient()
+    except ValueError as exc:
+        log(f"ERROR: {exc}", error=True)
+        return 2
+    if not client.has_access_token:
+        log("且慢：未配置 QIEMAN_ACCESS_TOKEN，分红方式字段将留空")
     reports: list[dict[str, Any]] = []
     failures: list[str] = []
     for code, name in plans.items():
@@ -895,11 +1040,17 @@ def main() -> int:
         try:
             composition = client.get_plan_composition(code)
             history = client.get_plan_history(code)
+            dividend_methods = (
+                client.get_plan_dividend_methods(code)
+                if client.has_access_token
+                else {}
+            )
             report = organise_plan(
                 code,
                 name,
                 composition,
                 history,
+                dividend_methods,
                 history_limit=positive_int(args.history_limit, default=3, maximum=20),
             )
             if not report["all_funds"]:

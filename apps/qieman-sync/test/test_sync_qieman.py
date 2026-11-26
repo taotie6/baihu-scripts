@@ -39,6 +39,122 @@ class ParsePlansTest(unittest.TestCase):
             QIEMAN.parse_plans("LONG_WIN:")
 
 
+def make_token(expires_at: float) -> str:
+    payload = QIEMAN.base64.urlsafe_b64encode(
+        QIEMAN.json.dumps({"exp": expires_at}).encode("utf-8")
+    ).decode("ascii").rstrip("=")
+    return f"header.{payload}.signature"
+
+
+class QiemanClientAuthTest(unittest.TestCase):
+    def test_bearer_token_is_used_only_for_allowed_get_requests(self) -> None:
+        token = make_token(QIEMAN.time.time() + 3600)
+        session = unittest.mock.MagicMock()
+        session.get.return_value.json.return_value = {"composition": []}
+        client = QIEMAN.QiemanClient(session=session, access_token=token)
+
+        client.get_plan_composition("LONG_WIN")
+
+        headers = session.get.call_args.kwargs["headers"]
+        self.assertEqual(headers["Authorization"], f"Bearer {token}")
+        with self.assertRaisesRegex(RuntimeError, "只读客户端拒绝"):
+            client._get(
+                "/pmdj/v2/ca/orders",
+                params={},
+                referer=QIEMAN.QIEMAN_BASE_URL,
+            )
+        self.assertEqual(session.get.call_count, 1)
+
+    def test_http_error_does_not_leak_capital_account_id(self) -> None:
+        session = unittest.mock.MagicMock()
+        response = session.get.return_value
+        response.status_code = 401
+        response.raise_for_status.side_effect = QIEMAN.requests.HTTPError(
+            "https://qieman.com/pmdj/v2/long-win/ca/dividend-methods"
+            "?capitalAccountId=sensitive-account-id"
+        )
+        client = QIEMAN.QiemanClient(session=session, access_token="")
+
+        with self.assertRaises(RuntimeError) as context:
+            client._get(
+                "/pmdj/v2/long-win/ca/dividend-methods",
+                params={"capitalAccountId": "sensitive-account-id"},
+                referer=QIEMAN.QIEMAN_BASE_URL,
+            )
+
+        message = str(context.exception)
+        self.assertIn("HTTP 401", message)
+        self.assertNotIn("sensitive-account-id", message)
+
+    def test_public_client_does_not_send_authorization(self) -> None:
+        session = unittest.mock.MagicMock()
+        session.get.return_value.json.return_value = {"composition": []}
+        client = QIEMAN.QiemanClient(session=session, access_token="")
+
+        client.get_plan_composition("LONG_WIN")
+
+        headers = session.get.call_args.kwargs["headers"]
+        self.assertNotIn("Authorization", headers)
+
+    def test_expired_token_is_rejected_without_leaking_it(self) -> None:
+        token = make_token(QIEMAN.time.time() - 1)
+        with self.assertRaises(ValueError) as context:
+            QIEMAN.QiemanClient(access_token=token)
+        self.assertIn("已过期", str(context.exception))
+        self.assertNotIn(token, str(context.exception))
+
+    def test_dividend_methods_use_current_values_and_cache_account_lookup(self) -> None:
+        client = QIEMAN.QiemanClient(
+            access_token=make_token(QIEMAN.time.time() + 3600)
+        )
+        asset_detail = {
+            "summary": {
+                "propertyAssets": [
+                    {
+                        "id": "user-property-id",
+                        "prodCode": "LONG_WIN",
+                        "caAsset": {"capitalAccountId": 12345},
+                    }
+                ]
+            }
+        }
+        dividend_methods = [
+            {
+                "fund": {"fundCode": "000001"},
+                "dividendMethod": 0,
+                "modifyingDividendMethod": 1,
+                "isModifying": True,
+                "planDividendMethod": 1,
+            },
+            {
+                "fund": {"fundCode": "000002"},
+                "dividendMethod": "1",
+                "planDividendMethod": 0,
+            },
+            {
+                "fund": {"fundCode": "000003"},
+                "dividendMethod": "unexpected",
+            },
+        ]
+
+        def fake_get(path: str, **kwargs: object) -> object:
+            if path == "/pmdj/v2/asset/detail":
+                return asset_detail
+            if path == "/pmdj/v2/long-win/ca/dividend-methods":
+                self.assertEqual(kwargs["params"], {"capitalAccountId": "12345"})
+                return dividend_methods
+            self.fail(f"unexpected path: {path}")
+
+        with patch.object(client, "_get", side_effect=fake_get) as get:
+            expected = {"000001": "红利再投", "000002": "现金分红"}
+            self.assertEqual(client.get_plan_dividend_methods("LONG_WIN"), expected)
+            self.assertEqual(client.get_plan_dividend_methods("LONG_WIN"), expected)
+
+        paths = [call.args[0] for call in get.call_args_list]
+        self.assertEqual(paths.count("/pmdj/v2/asset/detail"), 1)
+        self.assertEqual(paths.count("/pmdj/v2/long-win/ca/dividend-methods"), 2)
+
+
 class OrganisePlanTest(unittest.TestCase):
     def setUp(self) -> None:
         self.composition = {
@@ -104,6 +220,18 @@ class OrganisePlanTest(unittest.TestCase):
         self.assertEqual([item["adjustment_id"] for item in report["recent_adjustments"]], [9])
         self.assertIn("A股 60.00%", QIEMAN.render_plan(report))
         self.assertIn("买入基金一 1份@1.2", QIEMAN.render_plan(report))
+
+    def test_organises_current_dividend_methods(self) -> None:
+        report = QIEMAN.organise_plan(
+            "LONG_WIN",
+            "测试计划",
+            self.composition,
+            self.history,
+            {"000001": "红利再投"},
+            history_limit=1,
+        )
+        self.assertEqual(report["all_funds"][0]["dividend_type"], "红利再投")
+        self.assertIsNone(report["all_funds"][1]["dividend_type"])
 
     def test_notification_includes_failures(self) -> None:
         report = QIEMAN.organise_plan(
@@ -276,6 +404,7 @@ class FeishuSyncTest(unittest.TestCase):
                     "nav": 1.2,
                     "nav_date": 1760000000000,
                     "unit_value": 1,
+                    "dividend_type": "红利再投",
                 },
                 {
                     "fund_code": "000002",
@@ -286,6 +415,7 @@ class FeishuSyncTest(unittest.TestCase):
                     "nav": 2,
                     "nav_date": 1760000000000,
                     "unit_value": None,
+                    "dividend_type": "现金分红",
                 },
             ],
             "history": [
@@ -335,6 +465,10 @@ class FeishuSyncTest(unittest.TestCase):
         self.assertEqual(len(batch_create.call_args_list[0].args[1]), 1)
         self.assertEqual(len(batch_create.call_args_list[1].args[1]), 1)
         self.assertEqual(len(batch_update.call_args_list[0].args[1]), 1)
+        holding_update = batch_update.call_args_list[0].args[1][0]
+        self.assertEqual(holding_update["fields"]["分红方式"], "红利再投")
+        holding_create = batch_create.call_args_list[0].args[1][0]
+        self.assertEqual(holding_create["fields"]["分红方式"], "现金分红")
 
     def test_sync_report_updates_history_when_nav_is_zero(self) -> None:
         report = {
