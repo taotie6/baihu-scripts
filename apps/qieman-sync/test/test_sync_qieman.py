@@ -103,37 +103,38 @@ class QiemanClientAuthTest(unittest.TestCase):
         self.assertIn("已过期", str(context.exception))
         self.assertNotIn(token, str(context.exception))
 
-    def test_capital_account_id_accepts_nested_asset_context(self) -> None:
+    def test_capital_account_id_uses_user_property_endpoint(self) -> None:
         client = QIEMAN.QiemanClient(
             access_token=make_token(QIEMAN.time.time() + 3600)
         )
-        asset_detail = {
-            "summary": {
+        properties = [
+            {
+                "faceCode": "LONG_WIN",
                 "prodCode": "LONG_WIN",
-                "accounts": [
-                    {"caAsset": {"capitalAccountId": "12345", "totalAsset": 1}}
-                ],
+                "capitalAccountId": "12345",
+                "userPropertyId": "property-id",
             }
-        }
-        with patch.object(client, "_get", return_value=asset_detail) as get:
+        ]
+        with patch.object(client, "_get", return_value=properties) as get:
             self.assertEqual(client.get_capital_account_id("LONG_WIN"), "12345")
-        get.assert_called_once()
+        get.assert_called_once_with(
+            "/pmdj/v2/user-property/list",
+            params={"faceCode": "LONG_WIN"},
+            referer=f"{QIEMAN.QIEMAN_BASE_URL}/longwin/asset",
+        )
 
     def test_dividend_methods_use_current_values_and_cache_account_lookup(self) -> None:
         client = QIEMAN.QiemanClient(
             access_token=make_token(QIEMAN.time.time() + 3600)
         )
-        asset_detail = {
-            "summary": {
-                "propertyAssets": [
-                    {
-                        "id": "user-property-id",
-                        "prodCode": "LONG_WIN",
-                        "caAsset": {"totalAsset": 100},
-                    }
-                ]
+        user_properties = [
+            {
+                "faceCode": "LONG_WIN",
+                "prodCode": "LONG_WIN",
+                "capitalAccountId": 12345,
+                "userPropertyId": "user-property-id",
             }
-        }
+        ]
         dividend_methods = [
             {
                 "fund": {"fundCode": "000001"},
@@ -154,14 +155,9 @@ class QiemanClientAuthTest(unittest.TestCase):
         ]
 
         def fake_get(path: str, **kwargs: object) -> object:
-            if path == "/pmdj/v2/asset/detail":
-                return asset_detail
-            if path == "/pmdj/v2/long-win":
-                self.assertEqual(
-                    kwargs["params"],
-                    {"userPropertyId": "user-property-id", "extClassify": "true"},
-                )
-                return {"capitalAccountId": 12345}
+            if path == "/pmdj/v2/user-property/list":
+                self.assertEqual(kwargs["params"], {"faceCode": "LONG_WIN"})
+                return user_properties
             if path == "/pmdj/v2/long-win/ca/dividend-methods":
                 self.assertEqual(kwargs["params"], {"capitalAccountId": "12345"})
                 return dividend_methods
@@ -173,8 +169,7 @@ class QiemanClientAuthTest(unittest.TestCase):
             self.assertEqual(client.get_plan_dividend_methods("LONG_WIN"), expected)
 
         paths = [call.args[0] for call in get.call_args_list]
-        self.assertEqual(paths.count("/pmdj/v2/asset/detail"), 1)
-        self.assertEqual(paths.count("/pmdj/v2/long-win"), 1)
+        self.assertEqual(paths.count("/pmdj/v2/user-property/list"), 1)
         self.assertEqual(paths.count("/pmdj/v2/long-win/ca/dividend-methods"), 2)
 
 
